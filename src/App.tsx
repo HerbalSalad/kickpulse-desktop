@@ -3,6 +3,7 @@ import TitleBar from './components/TitleBar';
 import Sidebar from './components/Sidebar';
 import DashboardPage from './pages/DashboardPage';
 import SettingsPage from './pages/SettingsPage';
+import ConnectionsPage from './pages/ConnectionsPage';
 import ObsControlPage from './pages/ObsControlPage';
 import OverlayDisplayPage from './pages/OverlayDisplayPage';
 import LocalMediaPage from './pages/LocalMediaPage';
@@ -49,6 +50,7 @@ export default function App() {
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
         {active === 'dashboard' && <DashboardPage />}
         {active === 'settings' && <SettingsPage />}
+        {active === 'connections' && <ConnectionsPage userId={me?.userId || null} />}
 
         {active === 'widgets' &&
           (editingWidgetKey ? (

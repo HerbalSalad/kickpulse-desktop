@@ -14,6 +14,10 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Settings, LogOut } from 'lucide-react';
 import { Page, Section, Button, COLORS } from '../components/ui';
+import { desktopSessionFragment } from '../lib/webviewSession';
+import { useWebviewPreloadUrl, useWebviewLocalFileBridge } from '../lib/webviewBridge';
+
+const WEBSITE = 'https://www.kickpulsebot.com';
 
 export default function SettingsPage() {
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -59,8 +63,18 @@ export default function SettingsPage() {
     setStatus({ connected: false, me: null });
   };
 
+  const preloadUrl = useWebviewPreloadUrl();
+  const webviewRef = useWebviewLocalFileBridge();
+  const userId = status?.me?.userId ?? null;
+  const embedSrc = userId ? `${WEBSITE}/settings?embed=1${desktopSessionFragment(userId)}` : '';
+
   return (
-    <Page title="Settings" icon={<Settings size={22} color={COLORS.accent} />} subtitle="Your account connection — everything else (widgets, overlays, Pulse Engine) logs in on its own.">
+    <Page
+      title="Settings"
+      icon={<Settings size={22} color={COLORS.accent} />}
+      subtitle="Your account connection, plus everything else from the website's own Settings page — Discord notifications, API keys, legal, and account deletion."
+      fullBleed
+    >
       <Section title="Account">
         {status?.connected && status.me ? (
           <div>
@@ -129,6 +143,18 @@ export default function SettingsPage() {
           </div>
         )}
       </Section>
+
+      {/* Website Settings embed (2026-10-22) — Discord live notification,
+          API keys, legal, and account deletion. Native-only above (the
+          account connect box has to stay native — there's no session yet
+          for a webview to use until THIS is done); everything else is the
+          real website page, embedded, same ?embed=1 chrome-free pattern
+          the widget/Connections embeds use. */}
+      {userId && (
+        <Section style={{ padding: 0, overflow: 'hidden', flex: 1, minHeight: 500, marginBottom: 0 }}>
+          <webview ref={webviewRef} src={embedSrc} preload={preloadUrl ?? undefined} style={{ width: '100%', height: '100%', display: 'flex' }} partition="persist:kickpulse-webembed" />
+        </Section>
+      )}
     </Page>
   );
 }

@@ -70,7 +70,13 @@ export default function WidgetEditorPage({ widgetKey, userId, isPremium, onBack 
 
   const locked = widget.premium && !isPremium;
   const plainUrl = `${WEBSITE}/widgets/${widget.key}/settings`;
-  const embedSrc = userId ? `${plainUrl}${desktopSessionFragment(userId)}` : '';
+  // ?embed=1 (2026-10-22) — the website's DashboardLayout now renders
+  // chrome-free (no sidebar) for any dashboard route when this is set, so
+  // this embed no longer shows the whole site — just the widget's own
+  // settings panel, same as the Studio pages' own embeds. Appended after
+  // desktopSessionFragment's own hash fragment since that's a `#...` auth
+  // token, not a query string — `?embed=1` has to land before the `#`.
+  const embedSrc = userId ? `${plainUrl}?embed=1${desktopSessionFragment(userId)}` : '';
 
   return (
     <Page

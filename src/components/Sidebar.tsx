@@ -8,7 +8,7 @@
 // require switching to the Home tab to check.
 import {
   LayoutDashboard, Blocks, LayoutTemplate, Sparkles, Clapperboard, Zap, Shapes,
-  Video, Monitor, FolderOpen, Plug, MessageSquare, Bell, ShieldCheck, Sun, Flame, Mic, Settings, ShieldAlert, type LucideIcon,
+  Video, Monitor, FolderOpen, Plug, MessageSquare, Bell, ShieldCheck, Sun, Flame, Mic, Settings, ShieldAlert, Link2, type LucideIcon,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -64,7 +64,10 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: 'voice-commands', label: 'Voice Commands', icon: Mic },
     ],
   },
-  { label: null, items: [{ id: 'settings', label: 'Settings', icon: Settings }] },
+  { label: null, items: [
+    { id: 'connections', label: 'Connections', icon: Link2 },
+    { id: 'settings', label: 'Settings', icon: Settings },
+  ] },
 ];
 
 // Flat list, same identifiers as before — kept so App.tsx's own `active`
