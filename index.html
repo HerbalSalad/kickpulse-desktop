@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>KickPulse Desktop</title>
+    <style>
+      /* Minimal, modern, on-theme scrollbar (2026-10-16, direct request:
+         "I dont want to see ugly ass scrollbars. make them minimal, modern
+         and on theme with color") — matches this app's own COLORS palette
+         (src/components/ui.tsx) directly rather than guessing. This only
+         covers this app's OWN pages — the embedded <webview> editors'
+         scrollbars are their own separate guest-page document, out of
+         reach from here. */
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(124, 58, 237, 0.35); /* COLORS.accent, dimmed */
+        border-radius: 999px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+      }
+      ::-webkit-scrollbar-thumb:hover { background: rgba(124, 58, 237, 0.6); background-clip: padding-box; }
+      * { scrollbar-width: thin; scrollbar-color: rgba(124, 58, 237, 0.35) transparent; }
+    </style>
+  </head>
+  <body style="margin: 0; background: #0b0b10; color: #fff; font-family: system-ui, -apple-system, sans-serif;">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
