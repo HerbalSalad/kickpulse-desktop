@@ -115,16 +115,24 @@ export default function SettingsPage() {
     }
   };
 
-  // Account deletion
+  // Account deletion — typed confirmation phrase (2026-10-22, direct
+  // request: "the user should have to additionally type a sentence to
+  // confirm, for superior security and double check so no accounts are
+  // deleted on accident"), replacing the old double-confirm()-dialog
+  // flow. Same exact phrase/behavior as the website's own Settings.tsx.
+  const DELETE_CONFIRM_PHRASE = 'delete my account';
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteInput, setDeleteInput] = useState('');
   const [deleting, setDeleting] = useState(false);
   const deleteAccount = async () => {
-    if (!confirm('Permanently delete your KickPulse account? This removes every connected platform, widget config, and setting — it cannot be undone.')) return;
-    if (!confirm('Are you absolutely sure? Type nothing further needed — this is the final confirmation.')) return;
+    if (deleteInput.trim().toLowerCase() !== DELETE_CONFIRM_PHRASE) return;
     setDeleting(true);
     try {
       const res = await window.kickpulseDesktop.settings.deleteAccount();
       if (!res.ok) throw new Error(res.error || 'Failed to delete account');
       setStatus({ connected: false, me: null });
+      setConfirmingDelete(false);
+      setDeleteInput('');
     } catch (e: any) {
       alert(e.message || 'Failed to delete account');
     } finally {
@@ -149,9 +157,11 @@ export default function SettingsPage() {
               {status.me.isUltimate ? 'Ultimate' : status.me.isPremium ? 'Premium' : 'Free'} account
               {!status.me.kickConnected && " — no Kick account linked, live events won't reach this app yet"}
             </div>
-            <div style={{ fontSize: 12, color: COLORS.textDim, marginTop: 4 }}>
-              Kick: {status.me.kickConnected ? 'Connected' : 'Not connected'} · Twitch: {status.me.twitchConnected ? 'Connected' : 'Not connected'}
-            </div>
+            {/* Kick/Twitch connected status moved to the Connections tab
+                (2026-10-22, direct feedback: "we dont need the kick
+                connected twitch connected bit in settings as thats handled
+                in connections now") — removed here to avoid showing the
+                same thing twice. */}
             <Button onClick={disconnect} variant="danger" style={{ marginTop: 12 }}>
               <LogOut size={14} /> Disconnect
             </Button>
@@ -261,13 +271,33 @@ export default function SettingsPage() {
 
       {userId && (
         <Section title="Delete Account">
-          <p style={{ fontSize: 12, color: COLORS.textDim, marginBottom: 10 }}>
-            Permanently deletes your KickPulse account — every connected platform, widget config, and
-            setting. This cannot be undone.
-          </p>
-          <Button variant="danger" onClick={deleteAccount} disabled={deleting}>
-            <Trash2 size={13} /> {deleting ? 'Deleting…' : 'Delete Account'}
-          </Button>
+          {!confirmingDelete ? (
+            <>
+              <p style={{ fontSize: 12, color: COLORS.textDim, marginBottom: 10 }}>
+                Permanently deletes your KickPulse account — every connected platform, widget config, and
+                setting. This cannot be undone.
+              </p>
+              <Button variant="danger" onClick={() => setConfirmingDelete(true)}>
+                <Trash2 size={13} /> Delete Account
+              </Button>
+            </>
+          ) : (
+            <>
+              <p style={{ fontSize: 13, color: '#fca5a5', marginBottom: 8 }}>
+                Type <strong>"{DELETE_CONFIRM_PHRASE}"</strong> to confirm deletion:
+              </p>
+              <input
+                value={deleteInput} onChange={e => setDeleteInput(e.target.value)}
+                placeholder={DELETE_CONFIRM_PHRASE} style={input}
+              />
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <Button variant="danger" onClick={deleteAccount} disabled={deleting || deleteInput.trim().toLowerCase() !== DELETE_CONFIRM_PHRASE}>
+                  {deleting ? 'Deleting…' : 'Confirm Delete'}
+                </Button>
+                <Button onClick={() => { setConfirmingDelete(false); setDeleteInput(''); }}>Cancel</Button>
+              </div>
+            </>
+          )}
         </Section>
       )}
     </Page>

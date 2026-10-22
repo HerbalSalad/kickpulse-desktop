@@ -51,9 +51,22 @@ export default function ConnectionsPage({ userId }: ConnectionsPageProps) {
   const loadTiktok = useCallback(() => { window.kickpulseDesktop.connections.getTiktokStatus().then(setTiktokInfo).catch(() => {}); }, []);
 
   const [botStatus, setBotStatus] = useState<Awaited<ReturnType<typeof window.kickpulseDesktop.connections.getBotStatus>> | null>(null);
+  // botStatusError (2026-10-22 fix — direct report: "it doesnt look like
+  // connections recognizes that I am an ultimate user") — a failed fetch
+  // (server not deployed yet, network hiccup) used to leave botStatus null
+  // forever, and `!botStatus?.isUltimate` reads null exactly like "confirmed
+  // not Ultimate," showing the locked/Upgrade UI even for a real Ultimate
+  // account whose status just hasn't loaded. Now tracked separately so a
+  // failed load shows its own honest "couldn't check" message instead of a
+  // false negative.
+  const [botStatusError, setBotStatusError] = useState(false);
   const [botConnecting, setBotConnecting] = useState<'kick' | 'twitch' | null>(null);
   const [botDisconnecting, setBotDisconnecting] = useState<'kick' | 'twitch' | null>(null);
-  const loadBotStatus = useCallback(() => { window.kickpulseDesktop.connections.getBotStatus().then(setBotStatus).catch(() => {}); }, []);
+  const loadBotStatus = useCallback(() => {
+    window.kickpulseDesktop.connections.getBotStatus()
+      .then(d => { setBotStatus(d); setBotStatusError(false); })
+      .catch(() => setBotStatusError(true));
+  }, []);
 
   const [subs, setSubs] = useState<{ kick: boolean; twitch: boolean }>({ kick: false, twitch: false });
   const [subsLoading, setSubsLoading] = useState(false);
@@ -300,7 +313,12 @@ export default function ConnectionsPage({ userId }: ConnectionsPageProps) {
           return (
             <div key={platform} style={rowBox}>
               <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, textTransform: 'capitalize' }}>{platform}</div>
-              {!botStatus?.isUltimate ? (
+              {botStatusError ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderRadius: 8, background: COLORS.panel, border: `1px solid ${COLORS.border}` }}>
+                  <span style={{ fontSize: 11, color: COLORS.textFaint }}>Couldn't check bot account status — try again.</span>
+                  <button onClick={loadBotStatus} style={{ ...linkBtn, color: COLORS.textDim }}><RefreshCw size={13} /></button>
+                </div>
+              ) : !botStatus ? null : !botStatus.isUltimate ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderRadius: 8, background: COLORS.panel, border: `1px solid ${COLORS.border}` }}>
                   <span style={{ fontSize: 11, color: COLORS.textFaint, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Lock size={12} /> Connecting your own bot account requires Ultimate
