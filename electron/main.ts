@@ -15,7 +15,9 @@ import { loadConfig, saveConfig, addLocalMediaItem, removeLocalMediaItem } from 
 import { connectToKickPulse } from './ws-client';
 import type { WsClientHandle } from './ws-client';
 import { connectTwitchIrc } from './twitch-irc';
-import { loginWithKick, loginWithTwitch } from './oauth-login';
+import {
+  loginWithKick, loginWithTwitch, linkKick, linkTwitch, connectCustomBotKick, connectCustomBotTwitch,
+} from './oauth-login';
 import type { TwitchIrcHandle } from './twitch-irc';
 import {
   pushChatMessage, pushEvent, getRecentChat, getRecentEvents, clearAll as clearChatFeed,
@@ -35,6 +37,11 @@ import {
   getChatSettings, setChatMode, getViewerInfo, getCommunityBanSettings, setCommunityBanSettings, getKickSubscriberBadges,
   getCommunityBanList, applyCommunityBans, unbanCommunityBanEntry, unbanAllCommunityBans,
   getViewerFlags, addViewerFlag, removeViewerFlag, getBanSquads, createBanSquad, joinBanSquad, leaveBanSquad,
+  getYoutubeStatus, connectYoutube, connectYoutubeSecondary, disconnectYoutube, disconnectYoutubeSecondary,
+  getTiktokStatus, connectTiktok, disconnectTiktok, disconnectTwitchPlatform,
+  getBotIdentityStatus, disconnectBotIdentity, setBotIdentityPreference,
+  getSubscriptionStatus, subscribeEvents,
+  getDiscordSettings, saveDiscordSettings, testDiscordWebhook, deleteAccount,
 } from './api';
 import { startMediaServer } from './media-server';
 import * as obsClient from './obs-client';
@@ -951,6 +958,100 @@ app.whenReady().then(async () => {
   ipcMain.handle('community-bans:create-squad', (_e, name: string) => createBanSquad(requireApiKey(), name));
   ipcMain.handle('community-bans:join-squad', (_e, code: string) => joinBanSquad(requireApiKey(), code));
   ipcMain.handle('community-bans:leave-squad', (_e, squadId: string) => leaveBanSquad(requireApiKey(), squadId));
+
+  // ----- Connections (2026-10-22, native rebuild — direct feedback: "I want
+  // the settings and connections page on the desktop app to be actually on
+  // the app. Not loading the site.") -----
+  // Linking a platform/connecting a custom bot changes what getMe() returns
+  // (kickConnected/twitchConnected, Kick WS hookup, Twitch IRC join) — reuse
+  // saveApiKeyAndConnect's own refresh/reconnect logic afterward rather than
+  // just patching currentStatus by hand, so a first-time Kick link (e.g. a
+  // Twitch-only connection adding Kick) actually starts that connection
+  // immediately instead of needing an app restart.
+  ipcMain.handle('connections:link-kick', async () => {
+    try {
+      const me = currentStatus.me;
+      if (!me) throw new Error('Not connected yet');
+      await linkKick(me.userId);
+      await saveApiKeyAndConnect(requireApiKey());
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Failed to connect Kick' };
+    }
+  });
+  ipcMain.handle('connections:link-twitch', async () => {
+    try {
+      const me = currentStatus.me;
+      if (!me) throw new Error('Not connected yet');
+      await linkTwitch(me.userId);
+      await saveApiKeyAndConnect(requireApiKey());
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Failed to connect Twitch' };
+    }
+  });
+  ipcMain.handle('connections:disconnect-twitch', async () => {
+    await disconnectTwitchPlatform(requireApiKey());
+    await saveApiKeyAndConnect(requireApiKey());
+    return { ok: true };
+  });
+
+  ipcMain.handle('connections:youtube-status', () => getYoutubeStatus(requireApiKey()));
+  ipcMain.handle('connections:youtube-connect', (_e, handle: string) => connectYoutube(requireApiKey(), handle));
+  ipcMain.handle('connections:youtube-connect-secondary', (_e, handle: string) => connectYoutubeSecondary(requireApiKey(), handle));
+  ipcMain.handle('connections:youtube-disconnect', () => disconnectYoutube(requireApiKey()));
+  ipcMain.handle('connections:youtube-disconnect-secondary', () => disconnectYoutubeSecondary(requireApiKey()));
+
+  ipcMain.handle('connections:tiktok-status', () => getTiktokStatus(requireApiKey()));
+  ipcMain.handle('connections:tiktok-connect', (_e, username: string) => connectTiktok(requireApiKey(), username));
+  ipcMain.handle('connections:tiktok-disconnect', () => disconnectTiktok(requireApiKey()));
+
+  ipcMain.handle('connections:bot-status', () => getBotIdentityStatus(requireApiKey()));
+  ipcMain.handle('connections:bot-connect', async (_e, platform: 'kick' | 'twitch') => {
+    try {
+      const apiKey = requireApiKey();
+      if (platform === 'kick') await connectCustomBotKick(apiKey);
+      else await connectCustomBotTwitch(apiKey);
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Failed to connect bot account' };
+    }
+  });
+  ipcMain.handle('connections:bot-disconnect', (_e, platform: 'kick' | 'twitch') => disconnectBotIdentity(requireApiKey(), platform));
+  ipcMain.handle('connections:bot-set-preference', (_e, platform: 'kick' | 'twitch', useOfficialBot: boolean) =>
+    setBotIdentityPreference(requireApiKey(), platform, useOfficialBot));
+
+  ipcMain.handle('connections:subscription-status', () => {
+    const me = currentStatus.me;
+    if (!me) return { kick: false, twitch: false };
+    return getSubscriptionStatus(me.userId);
+  });
+  ipcMain.handle('connections:subscribe-events', (_e, platform: 'kick' | 'twitch') => {
+    const me = currentStatus.me;
+    if (!me) throw new Error('Not connected yet');
+    return subscribeEvents(me.userId, platform);
+  });
+
+  // ----- Settings (2026-10-22, native rebuild) -----
+  ipcMain.handle('settings:discord-get', () => getDiscordSettings(requireApiKey()));
+  ipcMain.handle('settings:discord-save', (_e, body: { webhookUrl: string; enabled: boolean }) => saveDiscordSettings(requireApiKey(), body));
+  ipcMain.handle('settings:discord-test', (_e, webhookUrl: string) => testDiscordWebhook(requireApiKey(), webhookUrl));
+  ipcMain.handle('settings:delete-account', async () => {
+    const result = await deleteAccount(requireApiKey());
+    if (result.ok) {
+      // Same teardown as config:disconnect above — the account no longer
+      // exists at all now, so there's nothing left to stay connected to.
+      wsHandle?.close(); wsHandle = null;
+      twitchIrcHandle?.close(); twitchIrcHandle = null;
+      clearChatFeed();
+      remoteConfig = null;
+      scenesConfig = null;
+      saveConfig({ apiKey: null });
+      setStatus({ connected: false, me: null });
+    }
+    return result;
+  });
+
   // Public, no apiKey needed — but still routed through main (not a plain
   // renderer fetch) so it goes through the same configurable
   // KICKPULSE_API_BASE every other call here respects.

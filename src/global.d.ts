@@ -431,6 +431,47 @@ declare global {
         joinSquad: (code: string) => Promise<any>;
         leaveSquad: (squadId: string) => Promise<any>;
       };
+
+      // Connections (2026-10-22, native rebuild — direct feedback: "I want
+      // the settings and connections page on the desktop app to be actually
+      // on the app. Not loading the site.")
+      connections: {
+        linkKick: () => Promise<{ ok: boolean; error?: string }>;
+        linkTwitch: () => Promise<{ ok: boolean; error?: string }>;
+        disconnectTwitch: () => Promise<{ ok: boolean }>;
+
+        getYoutubeStatus: () => Promise<{ connected: boolean; channelTitle?: string; avatar?: string | null; secondary?: { channelTitle: string; avatar: string | null } | null }>;
+        connectYoutube: (handle: string) => Promise<{ ok: boolean; channelTitle: string; avatar: string | null }>;
+        connectYoutubeSecondary: (handle: string) => Promise<{ ok: boolean; channelTitle: string; avatar: string | null }>;
+        disconnectYoutube: () => Promise<{ ok: boolean }>;
+        disconnectYoutubeSecondary: () => Promise<{ ok: boolean }>;
+
+        getTiktokStatus: () => Promise<{ connected: boolean; username?: string | null }>;
+        connectTiktok: (username: string) => Promise<{ ok: boolean; username: string }>;
+        disconnectTiktok: () => Promise<{ ok: boolean }>;
+
+        getBotStatus: () => Promise<{
+          isUltimate: boolean;
+          custom: { platform: string; username: string; display_name: string; needs_reauth: boolean }[];
+          official: { platform: string; username: string; display_name: string; needs_reauth: boolean }[];
+          preferences: { kick: boolean; twitch: boolean };
+        }>;
+        connectBot: (platform: 'kick' | 'twitch') => Promise<{ ok: boolean; error?: string }>;
+        disconnectBot: (platform: 'kick' | 'twitch') => Promise<{ ok: boolean }>;
+        setBotPreference: (platform: 'kick' | 'twitch', useOfficialBot: boolean) => Promise<{ ok: boolean }>;
+
+        getSubscriptionStatus: () => Promise<{ kick: boolean; twitch: boolean }>;
+        subscribeEvents: (platform: 'kick' | 'twitch') => Promise<{ success: boolean }>;
+      };
+
+      // Settings (2026-10-22, native rebuild) — API key management stays a
+      // website link, see electron/api.ts's own comment on why.
+      settings: {
+        getDiscordSettings: () => Promise<{ webhookUrl: string; enabled: boolean }>;
+        saveDiscordSettings: (body: { webhookUrl: string; enabled: boolean }) => Promise<any>;
+        testDiscordWebhook: (webhookUrl: string) => Promise<{ ok: boolean }>;
+        deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
+      };
     };
   }
 }

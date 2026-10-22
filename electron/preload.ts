@@ -30,6 +30,7 @@ import type {
   ViewerInfo,
 } from './types';
 import type { ChatFeedMessage, EventFeedItem } from './chat-feed';
+import type { YoutubeStatus, TiktokStatus, BotStatus, DiscordSettings } from './api';
 import type { DisplayOption } from './overlay-window';
 import type { DiscoveredBridge, HueLightInfo, PairResult } from './lights/hue';
 import type { WledDiscoveryResult } from './lights/wled';
@@ -322,5 +323,44 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
     createSquad: (name: string): Promise<any> => ipcRenderer.invoke('community-bans:create-squad', name),
     joinSquad: (code: string): Promise<any> => ipcRenderer.invoke('community-bans:join-squad', code),
     leaveSquad: (squadId: string): Promise<any> => ipcRenderer.invoke('community-bans:leave-squad', squadId),
+  },
+
+  // Connections (2026-10-22, native rebuild — direct feedback: "I want the
+  // settings and connections page on the desktop app to be actually on the
+  // app. Not loading the site.") — see electron/main.ts's own matching
+  // comment for the full reasoning.
+  connections: {
+    linkKick: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('connections:link-kick'),
+    linkTwitch: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('connections:link-twitch'),
+    disconnectTwitch: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('connections:disconnect-twitch'),
+
+    getYoutubeStatus: (): Promise<YoutubeStatus> => ipcRenderer.invoke('connections:youtube-status'),
+    connectYoutube: (handle: string): Promise<any> => ipcRenderer.invoke('connections:youtube-connect', handle),
+    connectYoutubeSecondary: (handle: string): Promise<any> => ipcRenderer.invoke('connections:youtube-connect-secondary', handle),
+    disconnectYoutube: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('connections:youtube-disconnect'),
+    disconnectYoutubeSecondary: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('connections:youtube-disconnect-secondary'),
+
+    getTiktokStatus: (): Promise<TiktokStatus> => ipcRenderer.invoke('connections:tiktok-status'),
+    connectTiktok: (username: string): Promise<any> => ipcRenderer.invoke('connections:tiktok-connect', username),
+    disconnectTiktok: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('connections:tiktok-disconnect'),
+
+    getBotStatus: (): Promise<BotStatus> => ipcRenderer.invoke('connections:bot-status'),
+    connectBot: (platform: 'kick' | 'twitch'): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('connections:bot-connect', platform),
+    disconnectBot: (platform: 'kick' | 'twitch'): Promise<{ ok: boolean }> => ipcRenderer.invoke('connections:bot-disconnect', platform),
+    setBotPreference: (platform: 'kick' | 'twitch', useOfficialBot: boolean): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('connections:bot-set-preference', platform, useOfficialBot),
+
+    getSubscriptionStatus: (): Promise<{ kick: boolean; twitch: boolean }> => ipcRenderer.invoke('connections:subscription-status'),
+    subscribeEvents: (platform: 'kick' | 'twitch'): Promise<{ success: boolean }> => ipcRenderer.invoke('connections:subscribe-events', platform),
+  },
+
+  // Settings (2026-10-22, native rebuild) — Discord live notification and
+  // account deletion. API key management is deliberately left as a website
+  // link — see electron/api.ts's own comment on why.
+  settings: {
+    getDiscordSettings: (): Promise<DiscordSettings> => ipcRenderer.invoke('settings:discord-get'),
+    saveDiscordSettings: (body: DiscordSettings): Promise<any> => ipcRenderer.invoke('settings:discord-save', body),
+    testDiscordWebhook: (webhookUrl: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('settings:discord-test', webhookUrl),
+    deleteAccount: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('settings:delete-account'),
   },
 });

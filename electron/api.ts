@@ -428,3 +428,105 @@ export function getChatSettings(apiKey: string): Promise<any> {
 export function setChatMode(apiKey: string, body: Record<string, any>): Promise<any> {
   return request('/moderation/chat-mode', apiKey, { method: 'POST', body: JSON.stringify(body) });
 }
+
+// ── Connections (2026-10-22, native rebuild — direct feedback: "I want the
+// settings and connections page on the desktop app to be actually on the
+// app. Not loading the site.") — same routes/youtube.js, routes/tiktok.js,
+// server.js (/platform-accounts/disconnect, /bot-identity/*,
+// /subscribe-events, /subscription-status) endpoints the website's own
+// src/pages/Connections.tsx already uses. Each of those server routes was
+// widened from authenticateKick/authenticateAny to accept this app's own
+// API-key credential too (see each route's own comment on the server) —
+// no new server functionality, just a second, equally-valid way in.
+export interface YoutubeStatus {
+  connected: boolean;
+  channelTitle?: string;
+  avatar?: string | null;
+  secondary?: { channelTitle: string; avatar: string | null } | null;
+}
+export function getYoutubeStatus(apiKey: string): Promise<YoutubeStatus> {
+  return request('/youtube/status', apiKey);
+}
+export function connectYoutube(apiKey: string, handle: string): Promise<{ ok: boolean; channelTitle: string; avatar: string | null }> {
+  return request('/youtube/connect', apiKey, { method: 'POST', body: JSON.stringify({ handle }) });
+}
+export function connectYoutubeSecondary(apiKey: string, handle: string): Promise<{ ok: boolean; channelTitle: string; avatar: string | null }> {
+  return request('/youtube/connect-secondary', apiKey, { method: 'POST', body: JSON.stringify({ handle }) });
+}
+export function disconnectYoutube(apiKey: string): Promise<{ ok: boolean }> {
+  return request('/youtube/disconnect', apiKey, { method: 'POST' });
+}
+export function disconnectYoutubeSecondary(apiKey: string): Promise<{ ok: boolean }> {
+  return request('/youtube/disconnect-secondary', apiKey, { method: 'POST' });
+}
+
+export interface TiktokStatus { connected: boolean; username?: string | null }
+export function getTiktokStatus(apiKey: string): Promise<TiktokStatus> {
+  return request('/tiktok/status', apiKey);
+}
+export function connectTiktok(apiKey: string, username: string): Promise<{ ok: boolean; username: string }> {
+  return request('/tiktok/connect', apiKey, { method: 'POST', body: JSON.stringify({ username }) });
+}
+export function disconnectTiktok(apiKey: string): Promise<{ ok: boolean }> {
+  return request('/tiktok/disconnect', apiKey, { method: 'POST' });
+}
+
+export function disconnectTwitchPlatform(apiKey: string): Promise<{ ok: boolean }> {
+  return request('/platform-accounts/disconnect', apiKey, { method: 'POST', body: JSON.stringify({ platform: 'twitch' }) });
+}
+
+export interface BotStatus {
+  isUltimate: boolean;
+  custom: { platform: string; username: string; display_name: string; needs_reauth: boolean }[];
+  official: { platform: string; username: string; display_name: string; needs_reauth: boolean }[];
+  preferences: { kick: boolean; twitch: boolean };
+}
+export function getBotIdentityStatus(apiKey: string): Promise<BotStatus> {
+  return request('/bot-identity/status', apiKey);
+}
+export function disconnectBotIdentity(apiKey: string, platform: 'kick' | 'twitch'): Promise<{ ok: boolean }> {
+  return request('/bot-identity/disconnect', apiKey, { method: 'POST', body: JSON.stringify({ platform }) });
+}
+export function setBotIdentityPreference(apiKey: string, platform: 'kick' | 'twitch', useOfficialBot: boolean): Promise<{ ok: boolean }> {
+  return request('/bot-identity/preference', apiKey, { method: 'PUT', body: JSON.stringify({ platform, useOfficialBot }) });
+}
+
+export function getSubscriptionStatus(userId: string): Promise<{ kick: boolean; twitch: boolean }> {
+  return fetch(`${BASE_URL}/subscription-status?userId=${encodeURIComponent(userId)}`)
+    .then(r => r.ok ? r.json() as Promise<{ kick: boolean; twitch: boolean }> : { kick: false, twitch: false })
+    .catch(() => ({ kick: false, twitch: false }));
+}
+export function subscribeEvents(userId: string, platform: 'kick' | 'twitch'): Promise<{ success: boolean }> {
+  return fetch(`${BASE_URL}/subscribe-events`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ platform, userId }),
+  }).then(async r => {
+    if (!r.ok) throw new ApiError((await r.text().catch(() => '')) || 'Subscribe failed', r.status);
+    return { success: true };
+  });
+}
+
+// ── Settings (2026-10-22, native rebuild) — Discord live notification and
+// account deletion, same routes/discord.js + server.js (/account/delete)
+// endpoints the website's own Settings.tsx already uses. API key
+// management is deliberately NOT rebuilt here — routes/apiKeys.js stays
+// dashboard-only (authenticateKick, no API-key fallback) on purpose, since
+// letting an API-key-authenticated session mint/revoke API keys through
+// itself would be a real privilege-persistence risk (a leaked key could
+// keep minting replacements even after the original is revoked) — see that
+// file's own header comment. SettingsPage.tsx instead links out to the
+// website for that one specific action.
+export interface DiscordSettings { webhookUrl: string; enabled: boolean }
+export function getDiscordSettings(apiKey: string): Promise<DiscordSettings> {
+  return request('/discord/settings', apiKey);
+}
+export function saveDiscordSettings(apiKey: string, body: DiscordSettings): Promise<any> {
+  return request('/discord/settings', apiKey, { method: 'PUT', body: JSON.stringify(body) });
+}
+export function testDiscordWebhook(apiKey: string, webhookUrl: string): Promise<{ ok: boolean }> {
+  return request('/discord/test', apiKey, { method: 'POST', body: JSON.stringify({ webhookUrl }) });
+}
+
+export function deleteAccount(apiKey: string): Promise<{ ok: boolean }> {
+  return request('/account/delete', apiKey, { method: 'POST' });
+}

@@ -194,6 +194,187 @@ export async function loginWithKick(): Promise<string> {
   return sessionToken;
 }
 
+// linkKick/linkTwitch (2026-10-22, native Connections page — direct
+// feedback: "I want the settings and connections page on the desktop app
+// to be actually on the app. Not loading the site.") — same real
+// BrowserWindow OAuth dance as loginWithKick/loginWithTwitch above, but
+// calls link_platform_account instead of find_or_create_platform_user:
+// attaches the platform to the ALREADY-logged-in desktop session's own
+// userId instead of resolving/creating a (possibly different) one. Mirrors
+// the website's own Settings.tsx "Connect Twitch"/"Connect Kick" buttons
+// (src/lib/auth.ts's getKickAuthUrl/getTwitchAuthUrl + KickAuthCallback.tsx/
+// TwitchAuthCallback.tsx's own link-vs-fresh-login branch) — same RPC, same
+// params, just called directly from the main process instead of a browser
+// callback page.
+async function linkPlatformAccount(params: Record<string, unknown>): Promise<void> {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/link_platform_account`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!r.ok) throw new Error(await r.text().catch(() => 'Failed to link account'));
+}
+
+export async function linkKick(userId: string): Promise<void> {
+  const { kickClientId } = await fetchClientIds();
+  if (!kickClientId) throw new Error('Kick login is not configured on the server right now');
+
+  const codeVerifier = generateVerifier();
+  const codeChallenge = generateChallenge(codeVerifier);
+  const state = generateState();
+  const redirectUri = `${WEBSITE}/auth/kick/callback`;
+
+  const authUrl = `https://id.kick.com/oauth/authorize?${new URLSearchParams({
+    client_id: kickClientId, redirect_uri: redirectUri, response_type: 'code',
+    scope: KICK_SCOPES, state, code_challenge: codeChallenge, code_challenge_method: 'S256',
+  })}`;
+
+  const params = await waitForOAuthRedirect(authUrl, redirectUri);
+  const error = params.get('error');
+  if (error) throw new Error(`Kick login failed (${error})`);
+  const code = params.get('code');
+  if (!code || params.get('state') !== state) throw new Error('Kick login failed — invalid response');
+
+  const { tokens, user } = await exchangeKickCode(code, codeVerifier, redirectUri);
+  if (!user) throw new Error('No Kick user data returned');
+  const username = user.username || user.name || '';
+
+  await linkPlatformAccount({
+    p_user_id: userId,
+    p_platform: 'kick',
+    p_platform_user_id: String(user.user_id),
+    p_username: username,
+    p_display_name: user.display_name || username,
+    p_profile_picture: user.profile_picture || null,
+    p_access_token: tokens.access_token,
+    p_refresh_token: tokens.refresh_token,
+    p_expires_in: tokens.expires_in || 3600,
+  });
+}
+
+export async function linkTwitch(userId: string): Promise<void> {
+  const { twitchClientId } = await fetchClientIds();
+  if (!twitchClientId) throw new Error('Twitch login is not configured on the server right now');
+
+  const state = generateState();
+  const redirectUri = `${WEBSITE}/auth/twitch/callback`;
+
+  const authUrl = `https://id.twitch.tv/oauth2/authorize?${new URLSearchParams({
+    client_id: twitchClientId, redirect_uri: redirectUri, response_type: 'code',
+    scope: TWITCH_SCOPES, state, force_verify: 'true',
+  })}`;
+
+  const params = await waitForOAuthRedirect(authUrl, redirectUri);
+  const error = params.get('error');
+  if (error) throw new Error(`Twitch login failed (${error})`);
+  const code = params.get('code');
+  if (!code || params.get('state') !== state) throw new Error('Twitch login failed — invalid response');
+
+  const { tokens, user } = await exchangeTwitchCode(code, redirectUri);
+  if (!user) throw new Error('No Twitch user data returned');
+  const username = user.login || user.display_name || '';
+
+  await linkPlatformAccount({
+    p_user_id: userId,
+    p_platform: 'twitch',
+    p_platform_user_id: String(user.id),
+    p_username: username,
+    p_display_name: user.display_name || username,
+    p_profile_picture: user.profile_image_url || null,
+    p_access_token: tokens.access_token,
+    p_refresh_token: tokens.refresh_token,
+    p_expires_in: tokens.expires_in || 3600,
+  });
+}
+
+// connectCustomBotKick/connectCustomBotTwitch (2026-10-22, native Connections
+// page) — "bring your own bot account" (Ultimate-gated), mirroring the
+// website's own getKickBotAuthUrl('custom')/getTwitchBotAuthUrl('custom')
+// (src/lib/auth.ts) + POST /bot-identity/save, but done here as a real
+// BrowserWindow round trip instead of a browser redirect, same pattern as
+// loginWithKick/linkKick above. Requires the app's own apiKey (Bearer
+// credential) to call /bot-identity/save, which is Ultimate-gate-checked
+// server-side regardless of what this sends.
+const KICK_BOT_SCOPES = 'user:read chat:write moderation:ban moderation:chat_message:manage';
+const TWITCH_BOT_SCOPES = ['user:read:email', 'user:bot', 'user:write:chat', 'moderator:manage:banned_users', 'moderator:manage:chat_messages'].join(' ');
+
+async function saveBotIdentity(apiKey: string, body: Record<string, unknown>): Promise<void> {
+  const r = await fetch(`${WEBSITE}/bot-identity/save`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error((await readErrorMessage(r)) || 'Failed to connect bot account');
+}
+
+export async function connectCustomBotKick(apiKey: string): Promise<void> {
+  const { kickClientId } = await fetchClientIds();
+  if (!kickClientId) throw new Error('Kick login is not configured on the server right now');
+
+  const codeVerifier = generateVerifier();
+  const codeChallenge = generateChallenge(codeVerifier);
+  const state = generateState();
+  const redirectUri = `${WEBSITE}/auth/kick/callback`;
+
+  const authUrl = `https://id.kick.com/oauth/authorize?${new URLSearchParams({
+    client_id: kickClientId, redirect_uri: redirectUri, response_type: 'code',
+    scope: KICK_BOT_SCOPES, state, code_challenge: codeChallenge, code_challenge_method: 'S256',
+  })}`;
+
+  const params = await waitForOAuthRedirect(authUrl, redirectUri);
+  const error = params.get('error');
+  if (error) throw new Error(`Bot connect failed (${error})`);
+  const code = params.get('code');
+  if (!code || params.get('state') !== state) throw new Error('Bot connect failed — invalid response');
+
+  const { tokens, user } = await exchangeKickCode(code, codeVerifier, redirectUri);
+  if (!user) throw new Error('No Kick user data returned');
+  const username = user.username || user.name || '';
+
+  await saveBotIdentity(apiKey, {
+    platform: 'kick',
+    platformUserId: String(user.user_id),
+    username,
+    displayName: user.display_name || username,
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    expiresIn: tokens.expires_in || 3600,
+  });
+}
+
+export async function connectCustomBotTwitch(apiKey: string): Promise<void> {
+  const { twitchClientId } = await fetchClientIds();
+  if (!twitchClientId) throw new Error('Twitch login is not configured on the server right now');
+
+  const state = generateState();
+  const redirectUri = `${WEBSITE}/auth/twitch/callback`;
+
+  const authUrl = `https://id.twitch.tv/oauth2/authorize?${new URLSearchParams({
+    client_id: twitchClientId, redirect_uri: redirectUri, response_type: 'code',
+    scope: TWITCH_BOT_SCOPES, state, force_verify: 'true',
+  })}`;
+
+  const params = await waitForOAuthRedirect(authUrl, redirectUri);
+  const error = params.get('error');
+  if (error) throw new Error(`Bot connect failed (${error})`);
+  const code = params.get('code');
+  if (!code || params.get('state') !== state) throw new Error('Bot connect failed — invalid response');
+
+  const { tokens, user } = await exchangeTwitchCode(code, redirectUri);
+  if (!user) throw new Error('No Twitch user data returned');
+  const username = user.login || user.display_name || '';
+
+  await saveBotIdentity(apiKey, {
+    platform: 'twitch',
+    platformUserId: String(user.id),
+    username,
+    displayName: user.display_name || username,
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    expiresIn: tokens.expires_in || 3600,
+  });
+}
+
 export async function loginWithTwitch(): Promise<string> {
   const { twitchClientId } = await fetchClientIds();
   if (!twitchClientId) throw new Error('Twitch login is not configured on the server right now');

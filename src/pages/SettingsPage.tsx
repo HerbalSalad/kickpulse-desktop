@@ -11,11 +11,19 @@
 // moved to OverlayDisplayPage.tsx, next to "Highlight This Screen" — the
 // one place actually testing which physical monitor something appears on
 // is relevant.
+//
+// Native rebuild (2026-10-22, direct feedback: "I want the settings and
+// connections page on the desktop app to be actually on the app. Not
+// loading the site... Fix these two pages of the app") — Discord live
+// notification, legal links, and account deletion replace the old <webview>
+// embed of the website's own /settings page. API key management is
+// deliberately left as a "manage on the website" link, not rebuilt here —
+// see electron/api.ts's own comment on why (letting an API-key-
+// authenticated session mint/revoke API keys through itself would be a
+// real privilege-persistence risk).
 import { useEffect, useState, type CSSProperties } from 'react';
-import { Settings, LogOut } from 'lucide-react';
+import { Settings, LogOut, Trash2, ExternalLink } from 'lucide-react';
 import { Page, Section, Button, COLORS } from '../components/ui';
-import { desktopSessionFragment } from '../lib/webviewSession';
-import { useWebviewPreloadUrl, useWebviewLocalFileBridge } from '../lib/webviewBridge';
 
 const WEBSITE = 'https://www.kickpulsebot.com';
 
@@ -63,17 +71,72 @@ export default function SettingsPage() {
     setStatus({ connected: false, me: null });
   };
 
-  const preloadUrl = useWebviewPreloadUrl();
-  const webviewRef = useWebviewLocalFileBridge();
   const userId = status?.me?.userId ?? null;
-  const embedSrc = userId ? `${WEBSITE}/settings?embed=1${desktopSessionFragment(userId)}` : '';
+
+  // Discord live notification
+  const [discordUrl, setDiscordUrl] = useState('');
+  const [discordEnabled, setDiscordEnabled] = useState(true);
+  const [discordLoaded, setDiscordLoaded] = useState(false);
+  const [discordSaving, setDiscordSaving] = useState(false);
+  const [discordTesting, setDiscordTesting] = useState(false);
+  const [discordMsg, setDiscordMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userId) return;
+    window.kickpulseDesktop.settings.getDiscordSettings()
+      .then(d => { setDiscordUrl(d.webhookUrl || ''); setDiscordEnabled(d.enabled !== false); })
+      .catch(() => {})
+      .finally(() => setDiscordLoaded(true));
+  }, [userId]);
+
+  const saveDiscord = async () => {
+    setDiscordSaving(true);
+    setDiscordMsg(null);
+    try {
+      await window.kickpulseDesktop.settings.saveDiscordSettings({ webhookUrl: discordUrl.trim(), enabled: discordEnabled });
+      setDiscordMsg('Saved!');
+    } catch (e: any) {
+      setDiscordMsg(e.message || 'Failed to save');
+    } finally {
+      setDiscordSaving(false);
+    }
+  };
+  const testDiscord = async () => {
+    if (!discordUrl.trim()) { setDiscordMsg('Paste a webhook URL first'); return; }
+    setDiscordTesting(true);
+    setDiscordMsg(null);
+    try {
+      await window.kickpulseDesktop.settings.testDiscordWebhook(discordUrl.trim());
+      setDiscordMsg('Test message sent — check your Discord channel!');
+    } catch (e: any) {
+      setDiscordMsg(e.message || 'Discord rejected the request');
+    } finally {
+      setDiscordTesting(false);
+    }
+  };
+
+  // Account deletion
+  const [deleting, setDeleting] = useState(false);
+  const deleteAccount = async () => {
+    if (!confirm('Permanently delete your KickPulse account? This removes every connected platform, widget config, and setting — it cannot be undone.')) return;
+    if (!confirm('Are you absolutely sure? Type nothing further needed — this is the final confirmation.')) return;
+    setDeleting(true);
+    try {
+      const res = await window.kickpulseDesktop.settings.deleteAccount();
+      if (!res.ok) throw new Error(res.error || 'Failed to delete account');
+      setStatus({ connected: false, me: null });
+    } catch (e: any) {
+      alert(e.message || 'Failed to delete account');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <Page
       title="Settings"
       icon={<Settings size={22} color={COLORS.accent} />}
-      subtitle="Your account connection, plus everything else from the website's own Settings page — Discord notifications, API keys, legal, and account deletion."
-      fullBleed
+      subtitle="Your account connection, Discord live notifications, legal, and account deletion."
     >
       <Section title="Account">
         {status?.connected && status.me ? (
@@ -144,15 +207,67 @@ export default function SettingsPage() {
         )}
       </Section>
 
-      {/* Website Settings embed (2026-10-22) — Discord live notification,
-          API keys, legal, and account deletion. Native-only above (the
-          account connect box has to stay native — there's no session yet
-          for a webview to use until THIS is done); everything else is the
-          real website page, embedded, same ?embed=1 chrome-free pattern
-          the widget/Connections embeds use. */}
+      {userId && discordLoaded && (
+        <Section title="Discord Live Notification">
+          <p style={{ fontSize: 12, color: COLORS.textDim, marginBottom: 10 }}>
+            Post a message to a Discord channel automatically when you go live on Kick. In Discord:
+            channel settings → Integrations → Webhooks → New Webhook → copy URL.
+          </p>
+          <input
+            type="text" value={discordUrl} onChange={e => setDiscordUrl(e.target.value)}
+            placeholder="https://discord.com/api/webhooks/…" style={input}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: COLORS.textDim, cursor: 'pointer' }}>
+              <button onClick={() => setDiscordEnabled(v => !v)}
+                style={{
+                  position: 'relative', width: 40, height: 22, borderRadius: 999, border: 'none', cursor: 'pointer',
+                  background: discordEnabled ? '#6366f1' : COLORS.border,
+                }}>
+                <span style={{
+                  position: 'absolute', top: 2, left: discordEnabled ? 20 : 2,
+                  width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.15s',
+                }} />
+              </button>
+              Enabled
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button onClick={saveDiscord} disabled={discordSaving}>{discordSaving ? 'Saving…' : 'Save'}</Button>
+              <Button onClick={testDiscord} disabled={discordTesting || !discordUrl.trim()}>{discordTesting ? 'Sending…' : 'Send Test Message'}</Button>
+            </div>
+          </div>
+          {discordMsg && <div style={{ fontSize: 12, color: COLORS.textDim, marginTop: 8 }}>{discordMsg}</div>}
+        </Section>
+      )}
+
       {userId && (
-        <Section style={{ padding: 0, overflow: 'hidden', flex: 1, minHeight: 500, marginBottom: 0 }}>
-          <webview ref={webviewRef} src={embedSrc} preload={preloadUrl ?? undefined} style={{ width: '100%', height: '100%', display: 'flex' }} partition="persist:kickpulse-webembed" />
+        <Section title="API Keys">
+          <p style={{ fontSize: 12, color: COLORS.textDim, marginBottom: 10 }}>
+            Managed on the website only, deliberately — not rebuilt here, since letting this app mint
+            or revoke keys through its own API-key credential would let a leaked key keep itself alive.
+          </p>
+          <Button onClick={() => window.kickpulseDesktop.openExternal(`${WEBSITE}/settings`)}>
+            <ExternalLink size={13} /> Manage API Keys on the website
+          </Button>
+        </Section>
+      )}
+
+      <Section title="Legal">
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Button onClick={() => window.kickpulseDesktop.openExternal(`${WEBSITE}/privacy`)}><ExternalLink size={13} /> Privacy Policy</Button>
+          <Button onClick={() => window.kickpulseDesktop.openExternal(`${WEBSITE}/terms`)}><ExternalLink size={13} /> Terms of Service</Button>
+        </div>
+      </Section>
+
+      {userId && (
+        <Section title="Delete Account">
+          <p style={{ fontSize: 12, color: COLORS.textDim, marginBottom: 10 }}>
+            Permanently deletes your KickPulse account — every connected platform, widget config, and
+            setting. This cannot be undone.
+          </p>
+          <Button variant="danger" onClick={deleteAccount} disabled={deleting}>
+            <Trash2 size={13} /> {deleting ? 'Deleting…' : 'Delete Account'}
+          </Button>
         </Section>
       )}
     </Page>
