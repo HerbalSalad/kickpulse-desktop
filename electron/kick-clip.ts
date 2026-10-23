@@ -76,6 +76,15 @@ export async function createKickClip({ kickSlug, duration, title }: CreateClipPa
       return { ok: false, error: 'Could not resolve this channel\'s internal id from kick.com — is the slug correct?' };
     }
 
+    // Diagnostic (2026-10-24) — session.cookies.get() can read HttpOnly
+    // cookies too (unlike page-side document.cookie), so this tells us
+    // whether "Login with Kick" actually left a real session behind at all,
+    // without ever logging a cookie VALUE (just names) anywhere. Folded
+    // into the error message below rather than logged separately, so it
+    // shows up wherever the failure itself is seen (chat reply included).
+    const kickCookies = await win.webContents.session.cookies.get({ domain: 'kick.com' });
+    const cookieNames = kickCookies.map((c) => c.name).join(', ') || '(none)';
+
     // initiateClip — best-guess body; Kick's own frontend bundle only gave
     // us the route (`POST /v1/clips`), not a captured request shape.
     const initiateResult = await win.webContents.executeJavaScript(`
@@ -87,7 +96,7 @@ export async function createKickClip({ kickSlug, duration, title }: CreateClipPa
         .catch(e => ({ status: 0, text: String(e) }))
     `);
     if (initiateResult.status < 200 || initiateResult.status >= 300) {
-      return { ok: false, error: `initiateClip failed (HTTP ${initiateResult.status}): ${initiateResult.text.slice(0, 300)}` };
+      return { ok: false, error: `initiateClip failed (HTTP ${initiateResult.status}): ${initiateResult.text.slice(0, 300)} [kick.com cookies present: ${cookieNames}]` };
     }
     let initiateData: any;
     try { initiateData = JSON.parse(initiateResult.text); } catch {
