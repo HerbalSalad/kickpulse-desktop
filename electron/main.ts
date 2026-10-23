@@ -48,6 +48,8 @@ import * as obsClient from './obs-client';
 import * as lights from './lights-manager';
 import * as lightScenes from './light-scenes';
 import * as lightReactions from './light-reactions';
+import { createKickClip } from './kick-clip';
+import { postClipResult } from './clip-result-report';
 import {
   startVoiceListening, stopVoiceListening, setVoiceInputDevice, isVoiceListening, registerVoiceIpc,
 } from './voice-window';
@@ -388,6 +390,25 @@ function handleWsMessage(msg: any): void {
           reward: msg.payload.reward,
         },
       });
+      return;
+    }
+
+    // clip.create — a !clip chat command (server.js, Kick-only, desktop-only
+    // gated) asking this app to actually create a real Kick clip. See
+    // kick-clip.ts's own header for the full mechanism and its unverified-
+    // end-to-end caveat. Fire-and-forget from this handler's own
+    // perspective — createKickClip() does the real work async and
+    // postClipResult() reports back whenever it resolves, however long
+    // that takes.
+    if (msg.event === 'clip.create' && msg.payload?.requestId) {
+      const { requestId, kickSlug, duration, title } = msg.payload;
+      const apiKey = loadConfig().apiKey;
+      createKickClip({ kickSlug, duration: Number(duration) || 30, title: title || 'Clip' })
+        .then((result) => { if (apiKey) return postClipResult(apiKey, requestId, result); })
+        .catch((e) => {
+          console.error('[clip] createKickClip threw', e);
+          if (apiKey) postClipResult(apiKey, requestId, { ok: false, error: e?.message || String(e) });
+        });
       return;
     }
 
