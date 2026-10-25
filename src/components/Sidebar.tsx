@@ -84,7 +84,7 @@ export default function Sidebar({ active, onSelect, connected }: { active: strin
       }}
     >
       <div style={{ padding: '0 18px 20px', display: 'flex', alignItems: 'center', gap: 9 }}>
-        <img src="/icon.png" alt="" style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0 }} />
+        <img src="./icon.png" alt="" style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0 }} />
         <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: 0.2, color: '#fff' }}>
           KickPulse <span style={{ color: '#a78bfa', fontWeight: 700 }}>Desktop</span>
         </div>
