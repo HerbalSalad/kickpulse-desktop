@@ -55,6 +55,9 @@ export interface PulseAction {
   obsSourceScene?: string;
   obsSourceName?: string;
   obsSourceVisible?: boolean;
+  meldSceneId?: string;
+  meldLayerSceneId?: string;
+  meldLayerId?: string;
   virtualLightConfigId?: string;
   lightMomentary?: boolean;
   lightHoldMs?: number;
@@ -97,6 +100,12 @@ export const ACTION_DEFS: { type: string; label: string; hint: string }[] = [
   { type: 'obs_start_replay_buffer', label: '🟢 Start Replay Buffer (OBS)', hint: 'Starts the replay buffer in OBS' },
   { type: 'obs_stop_replay_buffer',  label: '🔴 Stop Replay Buffer (OBS)',  hint: 'Stops the replay buffer in OBS' },
   { type: 'obs_save_replay_buffer',  label: '🎞 Save Clip (Replay Buffer)', hint: 'Saves the last few minutes to disk right now — e.g. bind this to a !clip chat command' },
+  { type: 'meld_switch_scene',  label: '🎬 Switch Meld Scene',    hint: 'Switches Meld Studio to this scene right now' },
+  { type: 'meld_start_stream',  label: '🔴 Start Streaming (Meld)', hint: 'Starts streaming in Meld Studio' },
+  { type: 'meld_stop_stream',   label: '⏹ Stop Streaming (Meld)',  hint: 'Stops streaming in Meld Studio' },
+  { type: 'meld_start_record',  label: '⏺ Start Recording (Meld)', hint: 'Starts recording in Meld Studio' },
+  { type: 'meld_stop_record',   label: '⏹ Stop Recording (Meld)',  hint: 'Stops recording in Meld Studio' },
+  { type: 'meld_toggle_layer',  label: '👁 Show/Hide Meld Layer', hint: 'Shows/hides a specific layer inside a specific scene' },
   { type: 'light_set_state',    label: '💡 Set Light State',      hint: 'Changes a configured WLED/Hue/Govee light' },
   { type: 'light_fire_reaction', label: '🎨 Fire a Light Reaction', hint: 'Plays a saved timed lighting effect, then restores whichever Light Scene is active' },
   { type: 'light_set_scene',    label: '💡 Set Light Scene',       hint: 'Makes a saved Light Scene the new baseline and applies it now' },
@@ -195,6 +204,8 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
   const [todoTasks, setTodoTasks] = useState<TargetOption[]>([]);
   const [obsScenes, setObsScenes] = useState<TargetOption[]>([]);
   const [obsSources, setObsSources] = useState<TargetOption[]>([]);
+  const [meldScenes, setMeldScenes] = useState<TargetOption[]>([]);
+  const [meldLayers, setMeldLayers] = useState<TargetOption[]>([]);
   const [lightDevices, setLightDevices] = useState<TargetOption[]>([]);
   const [lightReactions, setLightReactions] = useState<TargetOption[]>([]);
   const [lightScenes, setLightScenes] = useState<TargetOption[]>([]);
@@ -243,6 +254,19 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
     window.kickpulseDesktop.onObsStatus((s) => {
       setObsScenes(s.scenes.map((sc) => ({ id: sc.sceneUuid, name: sc.sceneName })));
       setObsSources(s.sources.map((src) => ({ id: `${src.sceneName}\u001f${src.sourceName}`, name: `${src.sourceName} — in ${src.sceneName}` })));
+    });
+  }, []);
+
+  // Meld Studio scenes/layers (2026-10-25) — same "already have this data
+  // locally and live" reasoning as the OBS block right above.
+  useEffect(() => {
+    window.kickpulseDesktop.meldGetStatus().then((s) => {
+      setMeldScenes(s.scenes.map((sc) => ({ id: sc.sceneId, name: sc.sceneName })));
+      setMeldLayers(s.layers.map((l) => ({ id: `${l.sceneId}\u001f${l.layerId}`, name: l.layerName })));
+    }).catch(() => {});
+    window.kickpulseDesktop.onMeldStatus((s) => {
+      setMeldScenes(s.scenes.map((sc) => ({ id: sc.sceneId, name: sc.sceneName })));
+      setMeldLayers(s.layers.map((l) => ({ id: `${l.sceneId}\u001f${l.layerId}`, name: l.layerName })));
     });
   }, []);
 
@@ -496,7 +520,7 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
                   )}
                 </div>
                 <span style={{ fontSize: 11, color: '#6b7280' }}>
-                  {obsScenes.length > 0 ? 'Live from your connected OBS — Settings → OBS Control' : 'Connect OBS Control to pick from a real scene list, or type the exact scene name now'}
+                  {obsScenes.length > 0 ? 'Live from your connected OBS — Settings → Broadcast Software' : 'Connect OBS in Settings → Broadcast Software to pick from a real scene list, or type the exact scene name now'}
                 </span>
               </div>
             )}
@@ -519,7 +543,27 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
                     options={[{ value: '', label: 'Toggle (flip current state)' }, { value: 'true', label: 'Show' }, { value: 'false', label: 'Hide' }]} style={{ width: 180 }} />
                 </div>
                 <span style={{ fontSize: 11, color: '#6b7280' }}>
-                  {obsSources.length > 0 ? 'Live from your connected OBS — Settings → OBS Control' : 'Connect OBS Control to pick from a real source list, or type the exact scene/source names now'}
+                  {obsSources.length > 0 ? 'Live from your connected OBS — Settings → Broadcast Software' : 'Connect OBS in Settings → Broadcast Software to pick from a real source list, or type the exact scene/source names now'}
+                </span>
+              </div>
+            )}
+            {a.type === 'meld_switch_scene' && (
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <Select value={a.meldSceneId ?? ''} onChange={(v) => setAction(idx, { meldSceneId: v || undefined })}
+                  options={[{ value: '', label: 'pick a scene…' }, ...meldScenes.map(s => ({ value: s.id, label: s.name }))]} style={{ width: 220 }} />
+                <span style={{ fontSize: 11, color: '#6b7280' }}>
+                  {meldScenes.length > 0 ? 'Live from your connected Meld Studio — Settings → Broadcast Software' : 'Connect Meld Studio (Settings → Broadcast Software) to pick a scene'}
+                </span>
+              </div>
+            )}
+            {a.type === 'meld_toggle_layer' && (
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <Select
+                  value={a.meldLayerSceneId && a.meldLayerId ? `${a.meldLayerSceneId}\u001f${a.meldLayerId}` : ''}
+                  onChange={(v) => { const [sceneId, layerId] = v.split('\u001f'); setAction(idx, { meldLayerSceneId: sceneId || undefined, meldLayerId: layerId || undefined }); }}
+                  options={[{ value: '', label: 'pick a layer…' }, ...meldLayers.map(s => ({ value: s.id, label: s.name }))]} style={{ width: 240 }} />
+                <span style={{ fontSize: 11, color: '#6b7280' }}>
+                  {meldLayers.length > 0 ? 'Live from your connected Meld Studio — Settings → Broadcast Software' : 'Connect Meld Studio (Settings → Broadcast Software) to pick a layer'}
                 </span>
               </div>
             )}

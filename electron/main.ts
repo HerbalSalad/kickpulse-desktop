@@ -24,7 +24,7 @@ import {
   summarizeKickEvent, summarizeTwitchEvent, KNOWN_KICK_EVENT_TYPES, KNOWN_TWITCH_EVENT_TYPES,
 } from './chat-feed';
 import {
-  getMe, getJumpscareConfig, getScenesConfig, reportObsState, reportObsSources, reportLightDevices,
+  getMe, getJumpscareConfig, getScenesConfig, reportObsState, reportObsSources, reportMeldState, reportMeldLayers, reportLightDevices,
   reportLightScenes, reportLightReactions,
   listPulseRules, createPulseRule, updatePulseRule, deletePulseRule,
   listPulseJobs, skipPulseJob, cancelPulseJob,
@@ -45,6 +45,7 @@ import {
 } from './api';
 import { startMediaServer } from './media-server';
 import * as obsClient from './obs-client';
+import * as meldClient from './meld-client';
 import * as lights from './lights-manager';
 import * as lightScenes from './light-scenes';
 import * as lightReactions from './light-reactions';
@@ -318,6 +319,20 @@ function handleWsMessage(msg: any): void {
     if (msg.event === 'obs.startReplayBuffer') { obsClient.startReplayBuffer().catch((err) => console.error('[obs] start replay buffer failed', err?.message || err)); return; }
     if (msg.event === 'obs.stopReplayBuffer')  { obsClient.stopReplayBuffer().catch((err) => console.error('[obs] stop replay buffer failed', err?.message || err)); return; }
     if (msg.event === 'obs.saveReplayBuffer')  { obsClient.saveReplayBuffer().catch((err) => console.error('[obs] save replay buffer failed', err?.message || err)); return; }
+    // meld.* (2026-10-25) — same fire-and-forget, desktop-app-only shape as
+    // the obs.* events above, for streamers using Meld Studio instead of OBS.
+    if (msg.event === 'meld.switchScene' && msg.payload?.sceneId) {
+      meldClient.switchScene(msg.payload.sceneId).catch((err) => console.error('[meld] Pulse Engine scene switch failed', err?.message || err));
+      return;
+    }
+    if (msg.event === 'meld.toggleLayer' && msg.payload?.sceneId && msg.payload?.layerId) {
+      meldClient.toggleLayer(msg.payload.sceneId, msg.payload.layerId).catch((err) => console.error('[meld] Pulse Engine layer toggle failed', err?.message || err));
+      return;
+    }
+    if (msg.event === 'meld.startStream') { meldClient.startStream().catch((err) => console.error('[meld] start stream failed', err?.message || err)); return; }
+    if (msg.event === 'meld.stopStream')  { meldClient.stopStream().catch((err) => console.error('[meld] stop stream failed', err?.message || err)); return; }
+    if (msg.event === 'meld.startRecord') { meldClient.startRecord().catch((err) => console.error('[meld] start record failed', err?.message || err)); return; }
+    if (msg.event === 'meld.stopRecord')  { meldClient.stopRecord().catch((err) => console.error('[meld] stop record failed', err?.message || err)); return; }
     // light.setState (2026-10-15) — the light_set_state Pulse Engine action's
     // own broadcast: payload.target is a specific configured light's id, or
     // 'all'; payload.on/brightness/color are each optional (only the fields
@@ -558,6 +573,18 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Meld Studio (2026-10-25) — same reporting shape as the OBS hook right
+  // above, so Pulse Engine's own rule editor can offer real scene/layer
+  // pickers for Meld too.
+  meldClient.onMeldStatusChange((status) => {
+    mainWindow?.webContents.send('meld-status-update', status);
+    const apiKey = loadConfig().apiKey;
+    if (apiKey) {
+      reportMeldState(apiKey, status.scenes).catch(() => {});
+      reportMeldLayers(apiKey, status.layers).catch(() => {});
+    }
+  });
+
   // ----- Account / config -----
   ipcMain.handle('config:get', () => loadConfig());
   ipcMain.handle('status:get', () => currentStatus);
@@ -746,6 +773,48 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('obs:stop-record', async () => {
     try { await obsClient.stopRecord(); return { ok: true }; }
+    catch (err: any) { return { ok: false, error: err?.message || 'Failed to stop recording' }; }
+  });
+
+  // ----- Meld Studio control (2026-10-25) -----
+  ipcMain.handle('meld:get-status', () => meldClient.getMeldStatus());
+
+  ipcMain.handle('meld:connect', async (_e, url: string) => {
+    saveConfig({ meldUrl: url });
+    try {
+      await meldClient.connectMeld(url);
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || "Couldn't reach Meld Studio" };
+    }
+  });
+
+  ipcMain.handle('meld:disconnect', () => meldClient.disconnectMeld());
+
+  ipcMain.handle('meld:switch-scene', async (_e, sceneId: string) => {
+    try { await meldClient.switchScene(sceneId); return { ok: true }; }
+    catch (err: any) { return { ok: false, error: err?.message || 'Failed to switch scene' }; }
+  });
+
+  ipcMain.handle('meld:toggle-layer', async (_e, sceneId: string, layerId: string) => {
+    try { await meldClient.toggleLayer(sceneId, layerId); return { ok: true }; }
+    catch (err: any) { return { ok: false, error: err?.message || 'Failed to toggle layer' }; }
+  });
+
+  ipcMain.handle('meld:start-stream', async () => {
+    try { await meldClient.startStream(); return { ok: true }; }
+    catch (err: any) { return { ok: false, error: err?.message || 'Failed to start streaming' }; }
+  });
+  ipcMain.handle('meld:stop-stream', async () => {
+    try { await meldClient.stopStream(); return { ok: true }; }
+    catch (err: any) { return { ok: false, error: err?.message || 'Failed to stop streaming' }; }
+  });
+  ipcMain.handle('meld:start-record', async () => {
+    try { await meldClient.startRecord(); return { ok: true }; }
+    catch (err: any) { return { ok: false, error: err?.message || 'Failed to start recording' }; }
+  });
+  ipcMain.handle('meld:stop-record', async () => {
+    try { await meldClient.stopRecord(); return { ok: true }; }
     catch (err: any) { return { ok: false, error: err?.message || 'Failed to stop recording' }; }
   });
 
@@ -1112,6 +1181,12 @@ app.whenReady().then(async () => {
       // status on the OBS Control page, not a startup failure.
     });
   }
+  if (existing.meldUrl) {
+    meldClient.connectMeld(existing.meldUrl).catch(() => {
+      // Same reasoning as the OBS auto-reconnect above — Meld likely just
+      // isn't running yet.
+    });
+  }
   // Report whatever lights are already configured so Pulse Engine's device
   // picker is populated immediately on launch, not just after the next add/
   // remove/rename (same reasoning as the OBS scene report on connect above).
@@ -1156,4 +1231,5 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   wsHandle?.close();
   obsClient.disconnectObs().catch(() => {});
+  meldClient.disconnectMeld().catch(() => {});
 });

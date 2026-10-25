@@ -55,7 +55,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Hardware',
     items: [
-      { id: 'obs', label: 'OBS Control', icon: Video },
+      { id: 'obs', label: 'Broadcast Software', icon: Video },
       { id: 'overlay-display', label: 'Overlay Display', icon: Monitor },
       { id: 'local-media', label: 'Local Media', icon: FolderOpen },
       { id: 'devices', label: 'Devices', icon: Plug },

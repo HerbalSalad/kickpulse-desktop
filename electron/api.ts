@@ -145,6 +145,23 @@ export function reportObsSources(apiKey: string, sources: { sceneName: string; s
   });
 }
 
+// reportMeldState/reportMeldLayers — same shape/reasoning as
+// reportObsState/reportObsSources above, for streamers using Meld Studio
+// instead of OBS (2026-10-25).
+export function reportMeldState(apiKey: string, scenes: { sceneId: string; sceneName: string }[]): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/desktop/meld-state', apiKey, {
+    method: 'POST',
+    body: JSON.stringify({ scenes }),
+  });
+}
+
+export function reportMeldLayers(apiKey: string, layers: { sceneId: string; layerId: string; layerName: string }[]): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/desktop/meld-layers-state', apiKey, {
+    method: 'POST',
+    body: JSON.stringify({ layers }),
+  });
+}
+
 // reportLightDevices — same shape/reasoning as reportObsState right above,
 // for Pulse Engine's "Set Light State" action's own device picker. Reported
 // on startup and after every add/remove/rename (see main.ts's own call

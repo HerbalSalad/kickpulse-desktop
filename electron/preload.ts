@@ -21,6 +21,7 @@ import type {
   MediaServerInfo,
   ObsStatus,
   ObsSceneItemInfo,
+  MeldStatus,
   ScenePlayPayload,
   LightDeviceConfig,
   LightState,
@@ -125,6 +126,22 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
   obsStopRecord: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('obs:stop-record'),
   onObsStatus: (cb: (status: ObsStatus) => void) => {
     ipcRenderer.on('obs-status-update', (_e, status: ObsStatus) => cb(status));
+  },
+
+  // Meld Studio control (2026-10-25) — same shape as the OBS bridge above.
+  meldGetStatus: (): Promise<MeldStatus> => ipcRenderer.invoke('meld:get-status'),
+  meldConnect: (url: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('meld:connect', url),
+  meldDisconnect: (): Promise<void> => ipcRenderer.invoke('meld:disconnect'),
+  meldSwitchScene: (sceneId: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('meld:switch-scene', sceneId),
+  meldToggleLayer: (sceneId: string, layerId: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('meld:toggle-layer', sceneId, layerId),
+  meldStartStream: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('meld:start-stream'),
+  meldStopStream: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('meld:stop-stream'),
+  meldStartRecord: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('meld:start-record'),
+  meldStopRecord: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('meld:stop-record'),
+  onMeldStatus: (cb: (status: MeldStatus) => void) => {
+    ipcRenderer.on('meld-status-update', (_e, status: MeldStatus) => cb(status));
   },
 
   // Lights — WLED (local HTTP, no auth) + Philips Hue (local bridge,

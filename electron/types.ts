@@ -28,6 +28,11 @@ export interface DesktopConfig {
   localMediaLibrary: LocalMediaItem[];
   obsUrl: string;
   obsPassword: string;
+  // Meld Studio (2026-10-25) — "not all users use OBS." Meld's own
+  // WebChannel API has no password/auth at all (confirmed from its own
+  // docs — trusted-local-network-only by design), so there's no companion
+  // meldPassword field the way OBS has one.
+  meldUrl: string;
   // Which physical display hosts the always-on overlay window (2026-10-18)
   // — null = always follow whichever display Windows currently calls
   // primary. See electron/overlay-window.ts's own DisplayOption/
@@ -253,6 +258,30 @@ export interface ObsStatus {
   // reportObsSources and obs-client.ts's refreshAllSceneItems). Refreshed
   // on connect and whenever a scene or scene-item is added/removed.
   sources: { sceneName: string; sourceName: string }[];
+}
+
+// Meld Studio (2026-10-25) — see electron/meld-client.ts's own header for
+// the full WebChannel API writeup and what's confirmed vs. inferred.
+export interface MeldSceneInfo {
+  sceneId: string;
+  sceneName: string;
+}
+
+export interface MeldLayerInfo {
+  sceneId: string;
+  layerId: string;
+  layerName: string;
+}
+
+export interface MeldStatus {
+  connected: boolean;
+  connecting: boolean;
+  currentSceneId: string | null;
+  scenes: MeldSceneInfo[];
+  layers: MeldLayerInfo[];
+  streaming: boolean;
+  recording: boolean;
+  error?: string;
 }
 
 // Threat level + flags for a chatter (2026-10-19) — GET /desktop/viewer-info,

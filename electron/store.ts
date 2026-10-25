@@ -16,6 +16,7 @@ const DEFAULTS: DesktopConfig = {
   localMediaLibrary: [],
   obsUrl: 'ws://127.0.0.1:4455',
   obsPassword: '',
+  meldUrl: 'ws://127.0.0.1:13376',
   overlayDisplayId: null,
   hueBridges: [],
   lightDevices: [],

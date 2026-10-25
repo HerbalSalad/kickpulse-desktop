@@ -66,6 +66,7 @@ declare global {
     localMediaLibrary: LocalMediaItem[];
     obsUrl: string;
     obsPassword: string;
+    meldUrl: string;
     overlayDisplayId: number | null;
     hueBridges: HueBridgeConfig[];
     lightDevices: LightDeviceConfig[];
@@ -256,6 +257,30 @@ declare global {
     code?: number;
   }
 
+  // Meld Studio (2026-10-25) — see electron/meld-client.ts's own header for
+  // the full WebChannel API writeup.
+  interface MeldSceneInfo {
+    sceneId: string;
+    sceneName: string;
+  }
+
+  interface MeldLayerInfo {
+    sceneId: string;
+    layerId: string;
+    layerName: string;
+  }
+
+  interface MeldStatus {
+    connected: boolean;
+    connecting: boolean;
+    currentSceneId: string | null;
+    scenes: MeldSceneInfo[];
+    layers: MeldLayerInfo[];
+    streaming: boolean;
+    recording: boolean;
+    error?: string;
+  }
+
   interface Window {
     kickpulseOverlay: {
       onPlayJumpscare: (cb: (payload: JumpscarePayload) => void) => void;
@@ -302,6 +327,17 @@ declare global {
       obsStartRecord: () => Promise<IpcResult>;
       obsStopRecord: () => Promise<IpcResult>;
       onObsStatus: (cb: (status: ObsStatus) => void) => void;
+
+      meldGetStatus: () => Promise<MeldStatus>;
+      meldConnect: (url: string) => Promise<IpcResult>;
+      meldDisconnect: () => Promise<void>;
+      meldSwitchScene: (sceneId: string) => Promise<IpcResult>;
+      meldToggleLayer: (sceneId: string, layerId: string) => Promise<IpcResult>;
+      meldStartStream: () => Promise<IpcResult>;
+      meldStopStream: () => Promise<IpcResult>;
+      meldStartRecord: () => Promise<IpcResult>;
+      meldStopRecord: () => Promise<IpcResult>;
+      onMeldStatus: (cb: (status: MeldStatus) => void) => void;
 
       lightsListDevices: () => Promise<LightDeviceConfig[]>;
       lightsListLiveStates: () => Promise<LightState[]>;

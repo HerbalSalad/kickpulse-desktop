@@ -1,6 +1,12 @@
-// src/pages/ObsControlPage.tsx — connects to OBS's own built-in WebSocket
-// server (Tools → WebSocket Server Settings, OBS 28+). Switch scenes,
-// show/hide sources, and start/stop streaming+recording.
+// src/pages/ObsControlPage.tsx — "Broadcast Software" in the sidebar as of
+// 2026-10-25 (not all streamers use OBS — direct request to add Meld Studio
+// support alongside it). Connects to either OBS's own built-in WebSocket
+// server (Tools → WebSocket Server Settings, OBS 28+) or Meld Studio's
+// WebChannel API (Settings → WebChannel API). Switch scenes, show/hide
+// sources/layers, and start/stop streaming+recording — on whichever one a
+// streamer actually uses. The file keeps its original name (ObsControlPage)
+// to avoid an unrelated import-path churn; the component itself now covers
+// both.
 //
 // 2026-10-15 — restyled onto the shared ui.tsx primitives (was its own
 // hand-rolled inline-CSS page, visibly inconsistent with the rest of the
@@ -13,7 +19,7 @@
 // buttons here and as their own Pulse Engine actions (obs_start_stream/
 // obs_stop_stream/obs_start_record/obs_stop_record on the website).
 import { useEffect, useState } from 'react';
-import { Radio, Circle, Play, Square, Cast, Power, PowerOff } from 'lucide-react';
+import { Radio, Circle, Play, Square, Cast, Power, PowerOff, Layers } from 'lucide-react';
 import { Page, Section, Row, TextInput, Button, Toggle, COLORS } from '../components/ui';
 
 // 2026-10-16 — "lets also work on the OBS integration and try to make it as
@@ -42,6 +48,7 @@ function formatDuration(ms: number): string {
 }
 
 export default function ObsControlPage() {
+  const [tab, setTab] = useState<'obs' | 'meld'>('obs');
   const [status, setStatus] = useState<ObsStatus | null>(null);
   const [url, setUrl] = useState('ws://127.0.0.1:4455');
   const [password, setPassword] = useState('');
@@ -134,12 +141,58 @@ export default function ObsControlPage() {
   }, [status?.recording, status?.recordDurationMs]);
   const liveRecordMs = status?.recording && recordAnchor ? recordAnchor.ms + (now - recordAnchor.at) : 0;
 
+  // ───────── Meld Studio (2026-10-25) ─────────
+  const [meldStatus, setMeldStatus] = useState<MeldStatus | null>(null);
+  const [meldUrl, setMeldUrl] = useState('ws://127.0.0.1:13376');
+  const [meldConnecting, setMeldConnecting] = useState(false);
+  const [meldStreamBusy, setMeldStreamBusy] = useState(false);
+  const [meldRecordBusy, setMeldRecordBusy] = useState(false);
+
+  useEffect(() => {
+    window.kickpulseDesktop.getConfig().then((cfg) => setMeldUrl(cfg.meldUrl || 'ws://127.0.0.1:13376'));
+    window.kickpulseDesktop.meldGetStatus().then(setMeldStatus);
+    window.kickpulseDesktop.onMeldStatus(setMeldStatus);
+  }, []);
+
+  const meldConnect = async () => {
+    setMeldConnecting(true);
+    await window.kickpulseDesktop.meldConnect(meldUrl);
+    setMeldConnecting(false);
+  };
+  const meldDisconnect = () => window.kickpulseDesktop.meldDisconnect();
+  const meldSwitchScene = (sceneId: string) => window.kickpulseDesktop.meldSwitchScene(sceneId);
+  const meldToggleLayer = (sceneId: string, layerId: string) => window.kickpulseDesktop.meldToggleLayer(sceneId, layerId);
+
+  const meldToggleStream = async () => {
+    setMeldStreamBusy(true);
+    await (meldStatus?.streaming ? window.kickpulseDesktop.meldStopStream() : window.kickpulseDesktop.meldStartStream());
+    setMeldStreamBusy(false);
+  };
+  const meldToggleRecord = async () => {
+    setMeldRecordBusy(true);
+    await (meldStatus?.recording ? window.kickpulseDesktop.meldStopRecord() : window.kickpulseDesktop.meldStartRecord());
+    setMeldRecordBusy(false);
+  };
+
+  // Group layers by their owning scene, display order matching meldStatus.scenes.
+  const layersByScene = new Map<string, MeldLayerInfo[]>();
+  for (const l of meldStatus?.layers ?? []) {
+    if (!layersByScene.has(l.sceneId)) layersByScene.set(l.sceneId, []);
+    layersByScene.get(l.sceneId)!.push(l);
+  }
+
   return (
     <Page
-      title="OBS Control"
+      title="Broadcast Software"
       icon={<Cast size={22} color={COLORS.accent} />}
-      subtitle="Connects directly to OBS's own built-in WebSocket server. Switch scenes, show/hide sources, start/stop streaming or recording — and a Pulse Engine rule can trigger any of these too."
+      subtitle="Connects directly to OBS's or Meld Studio's own built-in control protocol. Switch scenes, show/hide sources, start/stop streaming or recording — and a Pulse Engine rule can trigger any of these too."
     >
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <Button variant={tab === 'obs' ? 'primary' : undefined} onClick={() => setTab('obs')}>OBS</Button>
+        <Button variant={tab === 'meld' ? 'primary' : undefined} onClick={() => setTab('meld')}>Meld Studio</Button>
+      </div>
+
+      {tab === 'obs' && <>
       {!status?.connected && (
         <Section title="Connect to OBS">
           <div style={{
@@ -246,6 +299,101 @@ export default function ObsControlPage() {
           </div>
         </>
       )}
+      </>}
+
+      {tab === 'meld' && <>
+      {!meldStatus?.connected && (
+        <Section title="Connect to Meld Studio">
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, color: COLORS.textDim,
+            background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 14,
+          }}>
+            <div style={{ fontWeight: 600, color: COLORS.text, marginBottom: 2 }}>One-time setup, in Meld Studio itself:</div>
+            <div>1. Open Meld Studio → <strong style={{ color: COLORS.text }}>Settings</strong> → <strong style={{ color: COLORS.text }}>WebChannel API</strong></div>
+            <div>2. Turn it on if it isn't already</div>
+            <div>3. Hit Connect below — the default address already matches Meld's own default (no password needed at all)</div>
+          </div>
+          <Row label="Server URL"><TextInput value={meldUrl} onChange={setMeldUrl} /></Row>
+          <Button variant="primary" onClick={meldConnect} disabled={meldConnecting}>
+            {meldConnecting || meldStatus?.connecting ? 'Connecting…' : 'Connect'}
+          </Button>
+          {meldStatus?.error && (
+            <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
+              <div style={{ color: '#fca5a5', fontSize: 13, fontWeight: 600 }}>Couldn't reach Meld Studio. Make sure it's open and Settings → WebChannel API is turned on — then try again.</div>
+              <div style={{ color: COLORS.textDim, fontSize: 11, marginTop: 4 }}>({meldStatus.error})</div>
+            </div>
+          )}
+        </Section>
+      )}
+
+      {meldStatus?.connected && (
+        <>
+          <Section>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ color: COLORS.accent, fontWeight: 700, fontSize: 14 }}>● Connected to Meld Studio</div>
+              <Button onClick={meldDisconnect}>Disconnect</Button>
+            </div>
+          </Section>
+
+          <Section title="Stream & Record">
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: meldStatus.streaming ? 'rgba(239,68,68,0.12)' : COLORS.panel, border: `1px solid ${meldStatus.streaming ? '#ef4444' : COLORS.border}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Radio size={16} color={meldStatus.streaming ? '#ef4444' : COLORS.textDim} />
+                  <div style={{ fontSize: 13, fontWeight: 600, color: meldStatus.streaming ? '#fca5a5' : COLORS.text }}>
+                    {meldStatus.streaming ? 'Streaming' : 'Not streaming'}
+                  </div>
+                </div>
+                <Button variant={meldStatus.streaming ? 'danger' : 'primary'} onClick={meldToggleStream} disabled={meldStreamBusy}>
+                  {meldStatus.streaming ? <Square size={13} /> : <Play size={13} />}
+                  {meldStatus.streaming ? 'Stop' : 'Start'}
+                </Button>
+              </div>
+
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: meldStatus.recording ? 'rgba(239,68,68,0.12)' : COLORS.panel, border: `1px solid ${meldStatus.recording ? '#ef4444' : COLORS.border}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Circle size={16} color={meldStatus.recording ? '#ef4444' : COLORS.textDim} fill={meldStatus.recording ? '#ef4444' : 'none'} />
+                  <div style={{ fontSize: 13, fontWeight: 600, color: meldStatus.recording ? '#fca5a5' : COLORS.text }}>
+                    {meldStatus.recording ? 'Recording' : 'Not recording'}
+                  </div>
+                </div>
+                <Button variant={meldStatus.recording ? 'danger' : 'primary'} onClick={meldToggleRecord} disabled={meldRecordBusy}>
+                  {meldStatus.recording ? <Square size={13} /> : <Play size={13} />}
+                  {meldStatus.recording ? 'Stop' : 'Start'}
+                </Button>
+              </div>
+            </div>
+          </Section>
+
+          <Section title="Scenes & Layers">
+            {meldStatus.scenes.length === 0 && <div style={{ fontSize: 12, color: COLORS.textDim }}>No scenes reported yet.</div>}
+            {meldStatus.scenes.map((s) => (
+              <div key={s.sceneId} style={{ marginBottom: 10 }}>
+                <button
+                  onClick={() => meldSwitchScene(s.sceneId)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left', padding: '8px 10px', marginBottom: 4,
+                    borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13,
+                    background: s.sceneId === meldStatus.currentSceneId ? COLORS.accentDim : COLORS.panel,
+                    color: s.sceneId === meldStatus.currentSceneId ? COLORS.text : COLORS.textDim,
+                  }}
+                >
+                  {s.sceneId === meldStatus.currentSceneId ? '● ' : ''}{s.sceneName}
+                </button>
+                {(layersByScene.get(s.sceneId) ?? []).map((l) => (
+                  <div key={l.layerId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '6px 10px 6px 26px' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: COLORS.textDim }}>
+                      <Layers size={12} color={COLORS.textDim} />{l.layerName}
+                    </span>
+                    <Button onClick={() => meldToggleLayer(l.sceneId, l.layerId)}>Toggle</Button>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </Section>
+        </>
+      )}
+      </>}
     </Page>
   );
 }
