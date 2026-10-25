@@ -801,6 +801,11 @@ app.whenReady().then(async () => {
     catch (err: any) { return { ok: false, error: err?.message || 'Failed to toggle layer' }; }
   });
 
+  ipcMain.handle('meld:set-layer-visible', async (_e, layerId: string, visible: boolean) => {
+    try { await meldClient.setLayerVisible(layerId, visible); return { ok: true }; }
+    catch (err: any) { return { ok: false, error: err?.message || 'Failed to set layer visibility' }; }
+  });
+
   ipcMain.handle('meld:start-stream', async () => {
     try { await meldClient.startStream(); return { ok: true }; }
     catch (err: any) { return { ok: false, error: err?.message || 'Failed to start streaming' }; }

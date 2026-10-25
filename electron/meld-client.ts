@@ -81,7 +81,15 @@ function parseSession(session: any): { scenes: MeldSceneInfo[]; layers: MeldLaye
     const parentId = item.parent ?? item.sceneId;
     const scene = scenes.find((s) => s.sceneId === parentId);
     if (!scene) continue; // can't place this layer under a known scene — drop it rather than guess
-    layers.push({ sceneId: scene.sceneId, layerId: id, layerName: typeof item.name === 'string' && item.name.trim() ? item.name : id });
+    // visible (2026-10-26) — the exact, confirmed property name from Meld's
+    // own docs ("meld.setProperty(layerId, 'visible', false)"), not a
+    // guess like name/parent/current above. Defaults true if genuinely
+    // absent rather than hiding a layer we have no real signal about.
+    layers.push({
+      sceneId: scene.sceneId, layerId: id,
+      layerName: typeof item.name === 'string' && item.name.trim() ? item.name : id,
+      visible: item.visible !== false,
+    });
   }
   return { scenes, layers, currentSceneId };
 }
@@ -151,6 +159,15 @@ export async function switchScene(sceneId: string): Promise<void> {
 export async function toggleLayer(sceneId: string, layerId: string): Promise<void> {
   if (!meld) throw new Error('Not connected to Meld Studio');
   meld.toggleLayer(sceneId, layerId);
+}
+
+// Explicit show/hide (2026-10-26) — the Broadcast Software page's own Toggle
+// switch needs to set a KNOWN target state, the same way OBS's own
+// setSceneItemEnabled does, rather than always flipping whatever it
+// currently is (toggleLayer above, kept for Pulse Engine's own action).
+export async function setLayerVisible(layerId: string, visible: boolean): Promise<void> {
+  if (!meld) throw new Error('Not connected to Meld Studio');
+  meld.setProperty(layerId, 'visible', visible);
 }
 
 // Explicit start/stop (not toggleStream/toggleRecord) — matches the OBS

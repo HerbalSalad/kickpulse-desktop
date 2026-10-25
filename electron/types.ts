@@ -271,6 +271,7 @@ export interface MeldLayerInfo {
   sceneId: string;
   layerId: string;
   layerName: string;
+  visible: boolean;
 }
 
 export interface MeldStatus {

@@ -268,6 +268,7 @@ declare global {
     sceneId: string;
     layerId: string;
     layerName: string;
+    visible: boolean;
   }
 
   interface MeldStatus {
@@ -333,6 +334,7 @@ declare global {
       meldDisconnect: () => Promise<void>;
       meldSwitchScene: (sceneId: string) => Promise<IpcResult>;
       meldToggleLayer: (sceneId: string, layerId: string) => Promise<IpcResult>;
+      meldSetLayerVisible: (layerId: string, visible: boolean) => Promise<IpcResult>;
       meldStartStream: () => Promise<IpcResult>;
       meldStopStream: () => Promise<IpcResult>;
       meldStartRecord: () => Promise<IpcResult>;

@@ -136,6 +136,8 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
     ipcRenderer.invoke('meld:switch-scene', sceneId),
   meldToggleLayer: (sceneId: string, layerId: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('meld:toggle-layer', sceneId, layerId),
+  meldSetLayerVisible: (layerId: string, visible: boolean): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('meld:set-layer-visible', layerId, visible),
   meldStartStream: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('meld:start-stream'),
   meldStopStream: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('meld:stop-stream'),
   meldStartRecord: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('meld:start-record'),

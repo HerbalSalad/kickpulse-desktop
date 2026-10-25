@@ -19,7 +19,7 @@
 // buttons here and as their own Pulse Engine actions (obs_start_stream/
 // obs_stop_stream/obs_start_record/obs_stop_record on the website).
 import { useEffect, useState } from 'react';
-import { Radio, Circle, Play, Square, Cast, Power, PowerOff, Layers } from 'lucide-react';
+import { Radio, Circle, Play, Square, Cast, Power, PowerOff } from 'lucide-react';
 import { Page, Section, Row, TextInput, Button, Toggle, COLORS } from '../components/ui';
 
 // 2026-10-16 — "lets also work on the OBS integration and try to make it as
@@ -147,6 +147,7 @@ export default function ObsControlPage() {
   const [meldConnecting, setMeldConnecting] = useState(false);
   const [meldStreamBusy, setMeldStreamBusy] = useState(false);
   const [meldRecordBusy, setMeldRecordBusy] = useState(false);
+  const [selectedMeldScene, setSelectedMeldScene] = useState<string | null>(null);
 
   useEffect(() => {
     window.kickpulseDesktop.getConfig().then((cfg) => setMeldUrl(cfg.meldUrl || 'ws://127.0.0.1:13376'));
@@ -154,14 +155,28 @@ export default function ObsControlPage() {
     window.kickpulseDesktop.onMeldStatus(setMeldStatus);
   }, []);
 
+  // Same "default the right-hand panel to whatever's live" behavior as
+  // OBS's own selectedScene effect above.
+  useEffect(() => {
+    if (meldStatus?.currentSceneId && !selectedMeldScene) setSelectedMeldScene(meldStatus.currentSceneId);
+  }, [meldStatus?.currentSceneId]);
+
   const meldConnect = async () => {
     setMeldConnecting(true);
     await window.kickpulseDesktop.meldConnect(meldUrl);
     setMeldConnecting(false);
   };
   const meldDisconnect = () => window.kickpulseDesktop.meldDisconnect();
-  const meldSwitchScene = (sceneId: string) => window.kickpulseDesktop.meldSwitchScene(sceneId);
-  const meldToggleLayer = (sceneId: string, layerId: string) => window.kickpulseDesktop.meldToggleLayer(sceneId, layerId);
+  const meldSwitchScene = (sceneId: string) => {
+    setSelectedMeldScene(sceneId);
+    window.kickpulseDesktop.meldSwitchScene(sceneId);
+  };
+  const meldToggleLayer = (layerId: string, visible: boolean) => {
+    setMeldStatus((prev) => prev && { ...prev, layers: prev.layers.map((l) => (l.layerId === layerId ? { ...l, visible } : l)) });
+    window.kickpulseDesktop.meldSetLayerVisible(layerId, visible).then((res) => {
+      if (!res.ok) setMeldStatus((prev) => prev && { ...prev, layers: prev.layers.map((l) => (l.layerId === layerId ? { ...l, visible: !visible } : l)) });
+    });
+  };
 
   const meldToggleStream = async () => {
     setMeldStreamBusy(true);
@@ -365,32 +380,38 @@ export default function ObsControlPage() {
             </div>
           </Section>
 
-          <Section title="Scenes & Layers">
-            {meldStatus.scenes.length === 0 && <div style={{ fontSize: 12, color: COLORS.textDim }}>No scenes reported yet.</div>}
-            {meldStatus.scenes.map((s) => (
-              <div key={s.sceneId} style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <Section title="Scenes" style={{ flex: 1, margin: 0 }}>
+              {meldStatus.scenes.length === 0 && <div style={{ fontSize: 12, color: COLORS.textDim }}>No scenes reported yet.</div>}
+              {meldStatus.scenes.map((s) => (
                 <button
+                  key={s.sceneId}
                   onClick={() => meldSwitchScene(s.sceneId)}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left', padding: '8px 10px', marginBottom: 4,
+                    display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', marginBottom: 4,
                     borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13,
                     background: s.sceneId === meldStatus.currentSceneId ? COLORS.accentDim : COLORS.panel,
                     color: s.sceneId === meldStatus.currentSceneId ? COLORS.text : COLORS.textDim,
+                    fontWeight: s.sceneId === selectedMeldScene ? 600 : 400,
+                    outline: s.sceneId === selectedMeldScene && s.sceneId !== meldStatus.currentSceneId ? `1px solid ${COLORS.border}` : 'none',
                   }}
                 >
                   {s.sceneId === meldStatus.currentSceneId ? '● ' : ''}{s.sceneName}
                 </button>
-                {(layersByScene.get(s.sceneId) ?? []).map((l) => (
-                  <div key={l.layerId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '6px 10px 6px 26px' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: COLORS.textDim }}>
-                      <Layers size={12} color={COLORS.textDim} />{l.layerName}
-                    </span>
-                    <Button onClick={() => meldToggleLayer(l.sceneId, l.layerId)}>Toggle</Button>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </Section>
+              ))}
+            </Section>
+
+            <Section title={`Layers${selectedMeldScene ? ` in "${meldStatus.scenes.find((s) => s.sceneId === selectedMeldScene)?.sceneName ?? ''}"` : ''}`} style={{ flex: 1, margin: 0 }}>
+              {(!selectedMeldScene || (layersByScene.get(selectedMeldScene) ?? []).length === 0) && (
+                <div style={{ fontSize: 12, color: COLORS.textDim }}>No layers in this scene.</div>
+              )}
+              {(layersByScene.get(selectedMeldScene ?? '') ?? []).map((l) => (
+                <Row key={l.layerId} label={l.layerName}>
+                  <Toggle checked={l.visible} onChange={(v) => meldToggleLayer(l.layerId, v)} />
+                </Row>
+              ))}
+            </Section>
+          </div>
         </>
       )}
       </>}
