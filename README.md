@@ -95,9 +95,15 @@ To ship a new version:
 
 That builds, creates a GitHub Release tagged with the new version, and
 uploads the installer + the `latest.yml`/`.blockmap` files every installed
-copy checks against. Only the NSIS installer build auto-updates — the
-portable `.exe` has no installed app for electron-updater to silently
-replace, so that one's still a manual re-download.
+copy checks against. Only the NSIS installer is built (the portable `.exe`
+target was removed 2026-10-26 — it has no installed app for electron-updater
+to silently replace, and users downloading it instead of the installer was
+exactly what auto-update was meant to make unnecessary). The installer's
+output filename is pinned to `KickPulse-Desktop-Setup.exe` (no version in the
+name, via `build.nsis.artifactName`) so
+`github.com/HerbalSalad/kickpulse-desktop/releases/latest/download/KickPulse-Desktop-Setup.exe`
+always resolves to the current release with no link update needed per
+version — that's the URL the website's own download button uses.
 
 ## What actually works right now (verified live, not just built)
 
