@@ -79,6 +79,24 @@ Opens two windows: the always-on-top overlay (invisible until something
 plays) and the main app shell. **Ctrl+Alt+J** fires the bundled sample clip
 immediately, zero login required.
 
+## Releasing an update
+
+Auto-update is wired via `electron-updater` against this repo's own GitHub
+Releases (`package.json`'s `build.publish`) — see `electron/updater.ts` for
+the in-app side. It needs this repo's releases publicly downloadable with no
+embedded credential, so the repo itself has to be public (not just a public
+releases page on a private repo — GitHub doesn't offer that).
+
+To ship a new version:
+1. Bump `"version"` in `package.json`.
+2. `GH_TOKEN=<a token with repo write access> npm run release`
+
+That builds, creates a GitHub Release tagged with the new version, and
+uploads the installer + the `latest.yml`/`.blockmap` files every installed
+copy checks against. Only the NSIS installer build auto-updates — the
+portable `.exe` has no installed app for electron-updater to silently
+replace, so that one's still a manual re-download.
+
 ## What actually works right now (verified live, not just built)
 
 - The overlay mechanism itself — a transparent, click-through, always-on-top
