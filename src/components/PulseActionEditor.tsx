@@ -58,6 +58,7 @@ export interface PulseAction {
   meldSceneId?: string;
   meldLayerSceneId?: string;
   meldLayerId?: string;
+  meldClipDuration?: number; // meld_record_clip, seconds, 0-90, blank = max
   virtualLightConfigId?: string;
   lightMomentary?: boolean;
   lightHoldMs?: number;
@@ -106,6 +107,9 @@ export const ACTION_DEFS: { type: string; label: string; hint: string }[] = [
   { type: 'meld_start_record',  label: '⏺ Start Recording (Meld)', hint: 'Starts recording in Meld Studio' },
   { type: 'meld_stop_record',   label: '⏹ Stop Recording (Meld)',  hint: 'Stops recording in Meld Studio' },
   { type: 'meld_toggle_layer',  label: '👁 Show/Hide Meld Layer', hint: 'Shows/hides a specific layer inside a specific scene' },
+  { type: 'meld_record_clip',  label: '🎞 Save Clip (Meld)',      hint: 'Saves the last few seconds to disk right now — e.g. bind this to a !clip chat command' },
+  { type: 'meld_show_replay',  label: '📺 Show Replay (Meld)',    hint: 'Plays the most recent clip back as an overlay on the current scene' },
+  { type: 'meld_dismiss_replay', label: '✖ Dismiss Replay (Meld)', hint: 'Removes the replay overlay' },
   { type: 'light_set_state',    label: '💡 Set Light State',      hint: 'Changes a configured WLED/Hue/Govee light' },
   { type: 'light_fire_reaction', label: '🎨 Fire a Light Reaction', hint: 'Plays a saved timed lighting effect, then restores whichever Light Scene is active' },
   { type: 'light_set_scene',    label: '💡 Set Light Scene',       hint: 'Makes a saved Light Scene the new baseline and applies it now' },
@@ -566,6 +570,13 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
                   {meldLayers.length > 0 ? 'Live from your connected Meld Studio — Settings → Broadcast Software' : 'Connect Meld Studio (Settings → Broadcast Software) to pick a layer'}
                 </span>
               </div>
+            )}
+            {a.type === 'meld_record_clip' && (
+              <>
+                <NumberInput value={a.meldClipDuration ?? 0} min={0} max={90}
+                  onChange={(v) => setAction(idx, { meldClipDuration: Math.max(0, Math.min(90, v)) })} style={{ width: 90 }} />
+                <span style={{ fontSize: 12, color: '#9ca3af' }}>seconds — 0 (or blank) saves the max available length</span>
+              </>
             )}
             {a.type === 'light_set_state' && (
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>

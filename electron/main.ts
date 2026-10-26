@@ -334,6 +334,15 @@ function handleWsMessage(msg: any): void {
     if (msg.event === 'meld.stopStream')  { meldClient.stopStream().catch((err) => console.error('[meld] stop stream failed', err?.message || err)); return; }
     if (msg.event === 'meld.startRecord') { meldClient.startRecord().catch((err) => console.error('[meld] start record failed', err?.message || err)); return; }
     if (msg.event === 'meld.stopRecord')  { meldClient.stopRecord().catch((err) => console.error('[meld] stop record failed', err?.message || err)); return; }
+    // meld.recordClip/replayShow/replayDismiss (2026-10-26) — the
+    // meld_record_clip/meld_show_replay/meld_dismiss_replay Pulse Engine
+    // actions' own broadcast, Meld's real equivalent of OBS's replay buffer
+    // save (see meld-client.ts's header for how this was confirmed to
+    // exist at all). Same fire-and-forget shape as every other meld.*/obs.*
+    // event above.
+    if (msg.event === 'meld.recordClip') { meldClient.recordClip(msg.payload?.duration).catch((err) => console.error('[meld] record clip failed', err?.message || err)); return; }
+    if (msg.event === 'meld.replayShow') { meldClient.showReplay().catch((err) => console.error('[meld] show replay failed', err?.message || err)); return; }
+    if (msg.event === 'meld.replayDismiss') { meldClient.dismissReplay().catch((err) => console.error('[meld] dismiss replay failed', err?.message || err)); return; }
     // light.setState (2026-10-15) — the light_set_state Pulse Engine action's
     // own broadcast: payload.target is a specific configured light's id, or
     // 'all'; payload.on/brightness/color are each optional (only the fields

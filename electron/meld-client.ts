@@ -22,6 +22,22 @@
 //     sendCommand('meld.startStreamingAction' | 'stopStreamingAction' |
 //     'startRecordingAction' | 'stopRecordingAction').
 //
+// Clip/replay (2026-10-26) — confirmed live against Meld's own
+// WebChannelAPI.md (github.com/MeldStudio/streamdeck), not guessed: there's
+// no dedicated recordClip()/showReplay() method on the `meld` object itself
+// (unlike showScene/toggleLayer above) — both go through the same generic
+// sendCommand/sendCommandWithArgs dispatch startStream/stopStream already
+// use. `meld.recordClip` takes at most one optional arg, a clip duration in
+// seconds (0-90; omitted or 0 = the max available, same as Meld's own UI
+// button with no hotkey-configured length). `meld.replay.show` plays the
+// most recent clip back as a temporary overlay on the current scene (Meld's
+// own "Instant Replay"); `meld.replay.dismiss` removes it. This directly
+// answers a real open question from the file's own original 2026-10-25
+// header: Meld DOES have a replay-buffer-equivalent, it was just never
+// looked up before — confirmed via Mix It Up's own published Meld action
+// list (which already ships a "Record Clip" action using this exact
+// command) before trusting the raw API doc text.
+//
 // NOT INDEPENDENTLY CONFIRMED (the one real gap, flagged rather than
 // hidden): Meld's own docs never spell out the exact field names on a
 // `session.items` entry beyond a `type` field ('scene' | 'layer' | 'track' |
@@ -189,4 +205,26 @@ export async function startRecord(): Promise<void> {
 export async function stopRecord(): Promise<void> {
   if (!meld) throw new Error('Not connected to Meld Studio');
   meld.sendCommand('meld.stopRecordingAction');
+}
+
+// recordClip/showReplay/dismissReplay (2026-10-26) — see this file's header
+// for how these were confirmed. durationSeconds is optional and clamped to
+// Meld's own documented 0-90 range; omitted entirely records the max
+// available length, same as pressing Meld's own Clip button with no custom
+// hotkey length configured.
+export async function recordClip(durationSeconds?: number): Promise<void> {
+  if (!meld) throw new Error('Not connected to Meld Studio');
+  if (typeof durationSeconds === 'number' && durationSeconds > 0) {
+    meld.sendCommandWithArgs('meld.recordClip', [Math.max(0, Math.min(90, Math.round(durationSeconds)))]);
+  } else {
+    meld.sendCommand('meld.recordClip');
+  }
+}
+export async function showReplay(): Promise<void> {
+  if (!meld) throw new Error('Not connected to Meld Studio');
+  meld.sendCommand('meld.replay.show');
+}
+export async function dismissReplay(): Promise<void> {
+  if (!meld) throw new Error('Not connected to Meld Studio');
+  meld.sendCommand('meld.replay.dismiss');
 }
