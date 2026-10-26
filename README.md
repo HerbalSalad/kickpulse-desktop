@@ -84,12 +84,14 @@ immediately, zero login required.
 Auto-update is wired via `electron-updater` against this repo's own GitHub
 Releases (`package.json`'s `build.publish`) — see `electron/updater.ts` for
 the in-app side. It needs this repo's releases publicly downloadable with no
-embedded credential, so the repo itself has to be public (not just a public
-releases page on a private repo — GitHub doesn't offer that).
+embedded credential, so the repo itself is public (flipped 2026-10-26 — not
+just a public releases page on a private repo, GitHub doesn't offer that).
 
 To ship a new version:
 1. Bump `"version"` in `package.json`.
-2. `GH_TOKEN=<a token with repo write access> npm run release`
+2. `GH_TOKEN=$(gh auth token) npm run release` — `electron-builder`'s publish
+   step reads `GH_TOKEN` itself (separate from git's own credential helper),
+   so it still needs setting per-command even with `gh` already logged in.
 
 That builds, creates a GitHub Release tagged with the new version, and
 uploads the installer + the `latest.yml`/`.blockmap` files every installed
