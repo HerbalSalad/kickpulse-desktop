@@ -45,7 +45,7 @@
         "provider": "github",
         "owner": "HerbalSalad",
         "repo": "kickpulse-desktop",
-        "draft": false
+        "releaseType": "release"
       }
     ]
   },
