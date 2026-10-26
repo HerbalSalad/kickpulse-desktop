@@ -11,7 +11,8 @@
     "build": "npm run build:electron && vite build",
     "typecheck": "tsc -p electron/tsconfig.json --noEmit && tsc -p tsconfig.json --noEmit",
     "start": "npm run build && electron .",
-    "dist": "npm run build && electron-builder --win"
+    "dist": "npm run build && electron-builder --win",
+    "release": "npm run build && electron-builder --win --publish always"
   },
   "build": {
     "appId": "com.kickpulse.desktop",
@@ -40,10 +41,18 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "HerbalSalad",
+        "repo": "kickpulse-desktop"
+      }
+    ]
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
+    "electron-updater": "^6.8.11",
     "lucide-react": "^1.57.0",
     "obs-websocket-js": "^5.0.8",
     "qwebchannel": "^6.2.0",

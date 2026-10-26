@@ -62,6 +62,7 @@ import type {
   JumpscarePayload, DesktopStatus, JumpscareConfigResponse, MediaServerInfo,
   ScenesConfigResponse,
 } from './types';
+import { initUpdater, getUpdaterStatus, checkForUpdates, installUpdate } from './updater';
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 
@@ -584,6 +585,14 @@ app.whenReady().then(async () => {
       reportMeldLayers(apiKey, status.layers).catch(() => {});
     }
   });
+
+  // Auto-update (2026-10-26) — see electron/updater.ts for the full
+  // reasoning. Started here (not earlier in whenReady) so it fires after
+  // mainWindow exists, since status pushes need somewhere to send to.
+  initUpdater(() => mainWindow);
+  ipcMain.handle('updater:get-status', () => getUpdaterStatus());
+  ipcMain.handle('updater:check', () => checkForUpdates());
+  ipcMain.handle('updater:install', () => installUpdate());
 
   // ----- Account / config -----
   ipcMain.handle('config:get', () => loadConfig());

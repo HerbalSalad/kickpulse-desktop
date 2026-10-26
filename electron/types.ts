@@ -224,6 +224,19 @@ export interface DesktopStatus {
   error?: string;
 }
 
+// Auto-update (2026-10-26) — see electron/updater.ts. 'idle' covers both
+// "haven't checked yet" and "checked, already on the latest version" —
+// the UI has nothing useful to show a user in either case, so they're
+// deliberately not split into separate states.
+export type UpdaterPhase = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error';
+
+export interface UpdaterStatus {
+  phase: UpdaterPhase;
+  version?: string; // the available/downloaded version, once known
+  percent?: number; // 0-100, only meaningful while phase === 'downloading'
+  error?: string;
+}
+
 export interface ObsSceneInfo {
   sceneName: string;
   sceneUuid: string;

@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { Minus, Square, Copy, X } from 'lucide-react';
 import { COLORS } from './ui';
+import UpdateBadge from './UpdateBadge';
 
 const BAR_HEIGHT = 36;
 
@@ -56,7 +57,8 @@ export default function TitleBar() {
       >
         KickPulse
       </div>
-      <div style={{ display: 'flex', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+      <div style={{ display: 'flex', alignItems: 'center', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <UpdateBadge />
         <TitleBarButton label="Minimize" onClick={() => window.kickpulseDesktop.windowMinimize()}>
           <Minus size={14} />
         </TitleBarButton>

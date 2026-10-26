@@ -29,6 +29,7 @@ import type {
   LightScene,
   LightReaction,
   ViewerInfo,
+  UpdaterStatus,
 } from './types';
 import type { ChatFeedMessage, EventFeedItem } from './chat-feed';
 import type { YoutubeStatus, TiktokStatus, BotStatus, DiscordSettings } from './api';
@@ -381,5 +382,16 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
     saveDiscordSettings: (body: DiscordSettings): Promise<any> => ipcRenderer.invoke('settings:discord-save', body),
     testDiscordWebhook: (webhookUrl: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('settings:discord-test', webhookUrl),
     deleteAccount: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('settings:delete-account'),
+  },
+
+  // Auto-update (2026-10-26) — see electron/updater.ts.
+  updater: {
+    getStatus: (): Promise<UpdaterStatus> => ipcRenderer.invoke('updater:get-status'),
+    check: (): Promise<void> => ipcRenderer.invoke('updater:check'),
+    install: (): Promise<void> => ipcRenderer.invoke('updater:install'),
+    onStatus: (cb: (status: UpdaterStatus) => void) => {
+      ipcRenderer.removeAllListeners('updater:status-update');
+      ipcRenderer.on('updater:status-update', (_e, status: UpdaterStatus) => cb(status));
+    },
   },
 });

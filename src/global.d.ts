@@ -221,6 +221,15 @@ declare global {
     error?: string;
   }
 
+  type UpdaterPhase = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error';
+
+  interface UpdaterStatus {
+    phase: UpdaterPhase;
+    version?: string;
+    percent?: number;
+    error?: string;
+  }
+
   interface MediaServerInfo {
     port: number;
     baseUrl: string;
@@ -509,6 +518,13 @@ declare global {
         saveDiscordSettings: (body: { webhookUrl: string; enabled: boolean }) => Promise<any>;
         testDiscordWebhook: (webhookUrl: string) => Promise<{ ok: boolean }>;
         deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
+      };
+
+      updater: {
+        getStatus: () => Promise<UpdaterStatus>;
+        check: () => Promise<void>;
+        install: () => Promise<void>;
+        onStatus: (cb: (status: UpdaterStatus) => void) => void;
       };
     };
   }
