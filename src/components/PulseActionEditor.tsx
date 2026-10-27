@@ -21,7 +21,7 @@
 //     the same way) — no server round-trip needed at all, unlike the
 //     website's own version which only ever sees whatever this app last
 //     REPORTED to it.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Select, TextInput, NumberInput, Row, Toggle, ColorInput, Dropdown, COLORS } from './ui';
 import { supabase } from '../lib/supabase';
@@ -69,6 +69,15 @@ export interface PulseAction {
   timeoutSeconds?: number;
   onTimeout?: 'continue' | 'stop';
   op?: 'start' | 'pause' | 'reset';
+  // set_stream_title/set_kick_category/set_twitch_category (2026-10-27) —
+  // see the website's own PulseActionEditor.tsx for the full reasoning;
+  // identical fields, same server-side action types.
+  platform?: 'kick' | 'twitch' | 'both';
+  title?: string;
+  categoryId?: number;
+  categoryName?: string;
+  gameId?: string;
+  gameName?: string;
 }
 
 // No desktopOnly filtering here — this IS the desktop app: every one of
@@ -89,6 +98,9 @@ export const ACTION_DEFS: { type: string; label: string; hint: string }[] = [
   { type: 'music_previous',     label: '⏮ Previous Song (Spotify)', hint: 'Requires Spotify connected on the website (Song Requests settings) with an active device and Premium on the Spotify account' },
   { type: 'music_pause',        label: '⏸ Pause Music (Spotify)', hint: 'Requires Spotify connected on the website (Song Requests settings) with an active device and Premium on the Spotify account' },
   { type: 'music_resume',       label: '▶ Resume Music (Spotify)', hint: 'Requires Spotify connected on the website (Song Requests settings) with an active device and Premium on the Spotify account' },
+  { type: 'set_stream_title',   label: '📝 Set Stream Title',    hint: 'Updates your title on Kick, Twitch, or both — great for a voice command' },
+  { type: 'set_kick_category',  label: '🎮 Set Kick Category',   hint: 'Changes your Kick stream category' },
+  { type: 'set_twitch_category', label: '🎮 Set Twitch Category', hint: 'Changes your Twitch stream category' },
   { type: 'tts_speak',          label: '🔊 Read with TTS',       hint: "Speaks a fixed message you write, or the viewer's typed input, aloud through your System Sounds widget" },
   { type: 'timeout_user',       label: '👢 Timeout a Viewer',    hint: 'A REAL chat timeout — not a message. Times out the redeemer, or whoever they type.' },
   { type: 'ban_user',           label: '🔨 Ban a Viewer',        hint: 'A REAL permanent ban — not a message. Bans the redeemer, or whoever they type.' },
@@ -187,6 +199,63 @@ export function healCookedActionIds(actions: PulseAction[], lists: {
     return a;
   });
   return changed ? healed : actions;
+}
+
+// set_kick_category/set_twitch_category's own live search picker — a plain
+// debounced text search against window.kickpulseDesktop.pulseRules.
+// searchCategories (electron/api.ts → the website's /stream-info/
+// categories), not a preloaded Select, since Kick has thousands of
+// categories and Twitch has even more games. Selecting a result stores
+// {id, name} on the action; name is display-only.
+function CategoryPicker({ platform, value, onPick }: {
+  platform: 'kick' | 'twitch';
+  value?: { id: string | number; name?: string };
+  onPick: (id: string | number, name: string) => void;
+}) {
+  const [query, setQuery] = useState(value?.name ?? '');
+  const [results, setResults] = useState<{ id: string | number; name: string }[]>([]);
+  const [open, setOpen] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const search = useCallback((q: string) => {
+    if (q.trim().length < 2) { setResults([]); return; }
+    window.kickpulseDesktop.pulseRules.searchCategories(platform, q.trim()).then(setResults).catch(() => {});
+  }, [platform]);
+
+  const handleInput = (v: string) => {
+    setQuery(v);
+    setOpen(true);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => search(v), 350);
+  };
+
+  return (
+    <div style={{ position: 'relative', width: 220 }}>
+      <TextInput value={query} onChange={handleInput} placeholder={`Search ${platform === 'kick' ? 'Kick' : 'Twitch'} categories…`} style={{ width: '100%' }} />
+      {open && results.length > 0 && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          <div style={{
+            position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 41,
+            background: COLORS.panelAlt, border: `1px solid ${COLORS.borderStrong}`, borderRadius: 10,
+            maxHeight: 220, overflowY: 'auto', boxShadow: '0 12px 28px rgba(0,0,0,0.5)',
+          }}>
+            {results.map((r) => (
+              <div
+                key={r.id}
+                onClick={() => { onPick(r.id, r.name); setQuery(r.name); setResults([]); setOpen(false); }}
+                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13 }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                {r.name}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 export default function PulseActionEditor({ actions, onChange, userId, rowLabel = 'Then', locked, filterTypes }: {
@@ -449,6 +518,24 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
             )}
             {a.type === 'song_request' && (
               <span style={{ fontSize: 12, color: '#6b7280' }}>queues the viewer's input — set "Ask the viewer for input" (e.g. song name) on the reward</span>
+            )}
+            {a.type === 'set_stream_title' && (
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <TextInput value={a.title ?? ''} onChange={(v) => setAction(idx, { title: v })} placeholder="New stream title" style={{ width: 260 }} />
+                  <Select value={a.platform ?? 'both'} onChange={(v) => setAction(idx, { platform: v as 'kick' | 'twitch' | 'both' })}
+                    options={[{ value: 'both', label: 'Kick + Twitch' }, { value: 'kick', label: 'Kick only' }, { value: 'twitch', label: 'Twitch only' }]} style={{ width: 150 }} />
+                </div>
+                <span style={{ fontSize: 11, color: '#6b7280' }}>{'{username}'} and {'{amount}'} are substituted, same as a chat message</span>
+              </div>
+            )}
+            {a.type === 'set_kick_category' && (
+              <CategoryPicker platform="kick" value={a.categoryId ? { id: a.categoryId, name: a.categoryName } : undefined}
+                onPick={(id, name) => setAction(idx, { categoryId: Number(id), categoryName: name })} />
+            )}
+            {a.type === 'set_twitch_category' && (
+              <CategoryPicker platform="twitch" value={a.gameId ? { id: a.gameId, name: a.gameName } : undefined}
+                onPick={(id, name) => setAction(idx, { gameId: String(id), gameName: name })} />
             )}
             {a.type === 'tts_speak' && (
               voices.length === 0 ? (

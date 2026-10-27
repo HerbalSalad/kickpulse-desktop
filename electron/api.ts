@@ -323,6 +323,14 @@ export function getTtsVoices(apiKey: string): Promise<TtsVoiceOption[]> {
   return request<TtsVoiceOption[]>('/tts/commands', apiKey).catch(() => []);
 }
 
+// Set Stream Title/Set Kick Category/Set Twitch Category actions' own
+// category search (2026-10-27) — see the website's routes/streamInfo.js/
+// lib/streamInfo.js for the real Kick/Twitch API calls this proxies to.
+export interface CategoryOption { id: string | number; name: string }
+export function searchStreamCategories(apiKey: string, platform: 'kick' | 'twitch', query: string): Promise<CategoryOption[]> {
+  return request<CategoryOption[]>(`/stream-info/categories?platform=${platform}&q=${encodeURIComponent(query)}`, apiKey).catch(() => []);
+}
+
 // ── Chat Bot (2026-10-18) — native rebuild, replacing the embedded website
 // view. Every route here was widened to authenticateKickOrApiKey the same
 // day specifically for this (see routes/commands.js, routes/counters.js,

@@ -423,6 +423,7 @@ declare global {
         pointsRewards: () => Promise<{ data?: any[]; error?: string }>;
         counters: () => Promise<string[]>;
         ttsVoices: () => Promise<any[]>;
+        searchCategories: (platform: 'kick' | 'twitch', query: string) => Promise<{ id: string | number; name: string }[]>;
       };
 
       chatBot: {

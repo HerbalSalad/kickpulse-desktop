@@ -245,6 +245,8 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
     pointsRewards: (): Promise<{ data?: any[]; error?: string }> => ipcRenderer.invoke('pulse:points-rewards'),
     counters: (): Promise<string[]> => ipcRenderer.invoke('pulse:counters'),
     ttsVoices: (): Promise<any[]> => ipcRenderer.invoke('pulse:tts-voices'),
+    searchCategories: (platform: 'kick' | 'twitch', query: string): Promise<{ id: string | number; name: string }[]> =>
+      ipcRenderer.invoke('pulse:search-categories', platform, query),
   },
 
   // Chat Bot (2026-10-18, native rebuild) — same real-network-round-trip
