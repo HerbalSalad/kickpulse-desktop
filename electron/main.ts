@@ -28,7 +28,7 @@ import {
   reportLightScenes, reportLightReactions,
   listPulseRules, createPulseRule, updatePulseRule, deletePulseRule,
   listPulseJobs, skipPulseJob, cancelPulseJob,
-  getKickRewards, getTwitchRewards, getPointsRewards, getCounters, getTtsVoices, searchStreamCategories,
+  getKickRewards, getTwitchRewards, getPointsRewards, getCounters, getTtsVoices, searchStreamCategories, runPulseAction,
   listCommands, createCommand, updateCommand, deleteCommand, testSendCommand,
   listCountersFull, createCounter, adjustCounter, deleteCounter,
   getSpamFilter, saveSpamFilter, getChatbotSettings, saveChatbotSettings,
@@ -1074,6 +1074,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('pulse:counters', () => getCounters(requireApiKey()));
   ipcMain.handle('pulse:tts-voices', () => getTtsVoices(requireApiKey()));
   ipcMain.handle('pulse:search-categories', (_e, platform: 'kick' | 'twitch', query: string) => searchStreamCategories(requireApiKey(), platform, query));
+  ipcMain.handle('pulse:run-action', (_e, action: Record<string, unknown>) => runPulseAction(requireApiKey(), action));
 
   // ----- Chat Bot (2026-10-18, native rebuild) -----
   ipcMain.handle('chatbot:commands-list', () => listCommands(requireApiKey()));

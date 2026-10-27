@@ -331,6 +331,20 @@ export function searchStreamCategories(apiKey: string, platform: 'kick' | 'twitc
   return request<CategoryOption[]>(`/stream-info/categories?platform=${platform}&q=${encodeURIComponent(query)}`, apiKey).catch(() => []);
 }
 
+// runPulseAction (2026-10-27) — fires any Pulse Engine action type
+// directly, right now, with no saved rule needed — the exact same
+// POST /pulse-rules/run-action the Stream Deck plugin's own Pulse Action
+// button already calls. Used by SongRequestsPage's Skip/Pause/Resume/
+// Previous buttons (music_skip/music_pause/music_resume/music_previous)
+// so a streamer can control Song Requests from this app without having to
+// build a whole Pulse Engine rule just to press a button once.
+export function runPulseAction(apiKey: string, action: Record<string, unknown>): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/pulse-rules/run-action', apiKey, {
+    method: 'POST',
+    body: JSON.stringify({ action }),
+  });
+}
+
 // ── Chat Bot (2026-10-18) — native rebuild, replacing the embedded website
 // view. Every route here was widened to authenticateKickOrApiKey the same
 // day specifically for this (see routes/commands.js, routes/counters.js,

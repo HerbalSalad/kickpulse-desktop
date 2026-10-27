@@ -424,6 +424,7 @@ declare global {
         counters: () => Promise<string[]>;
         ttsVoices: () => Promise<any[]>;
         searchCategories: (platform: 'kick' | 'twitch', query: string) => Promise<{ id: string | number; name: string }[]>;
+        runAction: (action: Record<string, unknown>) => Promise<{ ok: boolean }>;
       };
 
       chatBot: {

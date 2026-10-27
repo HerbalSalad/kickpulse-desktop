@@ -20,6 +20,8 @@ import WidgetStudioPage from './pages/WidgetStudioPage';
 import ScenesPage from './pages/ScenesPage';
 import PulseEnginePage from './pages/PulseEnginePage';
 import ChatBotPage from './pages/ChatBotPage';
+import SongRequestsPage from './pages/SongRequestsPage';
+import StreamInfoPage from './pages/StreamInfoPage';
 import ChatAlertsPage from './pages/ChatAlertsPage';
 import ModerationPage from './pages/ModerationPage';
 import CommunityBansPage from './pages/CommunityBansPage';
@@ -97,6 +99,16 @@ export default function App() {
         {active === 'chatbot' && (
           me ? <ChatBotPage /> : (
             <ComingSoonPage title="Chat Bot" body="Connect your account on the Settings tab first." />
+          )
+        )}
+        {active === 'song-requests' && (
+          me ? <SongRequestsPage /> : (
+            <ComingSoonPage title="Song Requests" body="Connect your account on the Settings tab first." />
+          )
+        )}
+        {active === 'stream-info' && (
+          me ? <StreamInfoPage /> : (
+            <ComingSoonPage title="Stream Info" body="Connect your account on the Settings tab first." />
           )
         )}
         {active === 'chat-alerts' && (
