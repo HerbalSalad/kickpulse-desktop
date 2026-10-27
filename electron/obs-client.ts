@@ -234,3 +234,33 @@ export async function saveReplayBuffer(): Promise<void> {
   if (!obs) throw new Error('Not connected to OBS');
   await obs.call('SaveReplayBuffer');
 }
+
+// Aitum Vertical's own Backtrack buffer (2026-10-27, direct request: "can we
+// get aitum vertical working with OBS clipping"). Aitum Vertical is an OBS
+// PLUGIN, not a separate app with its own connection — it rides over this
+// same obs-websocket connection and registers itself as a "vendor"
+// (CallVendorRequest, a standard, documented obs-websocket RPC — not a
+// custom protocol). Confirmed directly from Aitum's own plugin source
+// (github.com/Aitum/obs-vertical-canvas, vertical-canvas.cpp) rather than
+// guessed from a forum post: vendor name "aitum-vertical-canvas", with
+// start_backtrack/stop_backtrack literally invoking OBS's own
+// StartReplayBuffer/StopReplayBuffer slots, and save_backtrack invoking
+// ReplayButtonClicked (the same save-the-buffer action OBS's own Save
+// Replay Buffer button fires) — Backtrack genuinely IS "OBS's replay
+// buffer, running a second time for the vertical canvas," not a separate
+// mechanism, matching what several real users independently reported.
+// Throws (same as every obs.call above) if Aitum Vertical isn't installed/
+// loaded in the connected OBS — CallVendorRequest rejects when no vendor
+// with that name has registered.
+export async function startAitumBacktrack(): Promise<void> {
+  if (!obs) throw new Error('Not connected to OBS');
+  await obs.call('CallVendorRequest', { vendorName: 'aitum-vertical-canvas', requestType: 'start_backtrack', requestData: {} });
+}
+export async function stopAitumBacktrack(): Promise<void> {
+  if (!obs) throw new Error('Not connected to OBS');
+  await obs.call('CallVendorRequest', { vendorName: 'aitum-vertical-canvas', requestType: 'stop_backtrack', requestData: {} });
+}
+export async function saveAitumBacktrack(): Promise<void> {
+  if (!obs) throw new Error('Not connected to OBS');
+  await obs.call('CallVendorRequest', { vendorName: 'aitum-vertical-canvas', requestType: 'save_backtrack', requestData: {} });
+}

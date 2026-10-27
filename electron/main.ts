@@ -320,6 +320,14 @@ function handleWsMessage(msg: any): void {
     if (msg.event === 'obs.startReplayBuffer') { obsClient.startReplayBuffer().catch((err) => console.error('[obs] start replay buffer failed', err?.message || err)); return; }
     if (msg.event === 'obs.stopReplayBuffer')  { obsClient.stopReplayBuffer().catch((err) => console.error('[obs] stop replay buffer failed', err?.message || err)); return; }
     if (msg.event === 'obs.saveReplayBuffer')  { obsClient.saveReplayBuffer().catch((err) => console.error('[obs] save replay buffer failed', err?.message || err)); return; }
+    // obs.startAitumBacktrack/stopAitumBacktrack/saveAitumBacktrack
+    // (2026-10-27) — Aitum Vertical's own separate replay buffer, reached
+    // through the SAME OBS websocket connection (it's a plugin, not a
+    // separate app) via CallVendorRequest. See obs-client.ts's header for
+    // how this was confirmed.
+    if (msg.event === 'obs.startAitumBacktrack') { obsClient.startAitumBacktrack().catch((err) => console.error('[obs] start Aitum backtrack failed', err?.message || err)); return; }
+    if (msg.event === 'obs.stopAitumBacktrack')  { obsClient.stopAitumBacktrack().catch((err) => console.error('[obs] stop Aitum backtrack failed', err?.message || err)); return; }
+    if (msg.event === 'obs.saveAitumBacktrack')  { obsClient.saveAitumBacktrack().catch((err) => console.error('[obs] save Aitum backtrack failed', err?.message || err)); return; }
     // meld.* (2026-10-25) — same fire-and-forget, desktop-app-only shape as
     // the obs.* events above, for streamers using Meld Studio instead of OBS.
     if (msg.event === 'meld.switchScene' && msg.payload?.sceneId) {
