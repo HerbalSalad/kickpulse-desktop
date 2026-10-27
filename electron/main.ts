@@ -203,6 +203,22 @@ function setStatus(next: DesktopStatus): void {
   mainWindow?.webContents.send('status-update', currentStatus);
 }
 
+// setVoiceEnabled — extracted from the 'voice:set-enabled' IPC handler
+// (2026-10-27) so the new voice.setEnabled WS case (the Stream Deck plugin's
+// own "Toggle Voice Commands" button, routed through the same WS hub every
+// other remote-control action already uses) can share the exact same
+// enable/disable logic, including the "model not downloaded yet" guard,
+// instead of a second, drifting copy of it.
+function setVoiceEnabled(enabled: boolean): { ok: boolean; needsModelDownload?: boolean } {
+  if (enabled && !isModelReady(loadConfig().voiceModelSize)) {
+    return { ok: false, needsModelDownload: true };
+  }
+  saveConfig({ voiceEnabled: enabled });
+  if (enabled) startVoiceListening(loadConfig().voiceInputDeviceId);
+  else stopVoiceListening();
+  return { ok: true };
+}
+
 async function connectAccount(apiKey: string): Promise<void> {
   wsHandle?.close();
   wsHandle = null;
@@ -419,9 +435,26 @@ function handleWsMessage(msg: any): void {
     // light.setScene (2026-10-18) — the light_set_scene Pulse Engine action's
     // own broadcast: makes one of this app's own saved Light Scenes the new
     // baseline and applies it immediately (e.g. "when stream starts, switch
-    // to the Cozy scene").
+    // to the Cozy scene"). setAsDefault (2026-10-27, direct request — the
+    // Stream Deck plugin's own new "Set Light Scene" button wanted a way to
+    // apply a scene WITHOUT making it the new baseline, e.g. a quick one-off
+    // look that should still revert to the real default afterward) defaults
+    // to true so every rule saved before this field existed keeps its
+    // original, only-ever-had-one-behavior — applyScene (no payload, see
+    // electron/light-scenes.ts) is the new temporary-only path.
     if (msg.event === 'light.setScene' && msg.payload?.sceneId) {
-      lightScenes.setActiveScene(msg.payload.sceneId).catch(() => {});
+      if (msg.payload.setAsDefault === false) lightScenes.applyScene(msg.payload.sceneId).catch(() => {});
+      else lightScenes.setActiveScene(msg.payload.sceneId).catch(() => {});
+      return;
+    }
+    // voice.setEnabled (2026-10-27) — the Stream Deck plugin's own new
+    // "Toggle Voice Commands" button, routed through the same WS hub as
+    // every other remote-control action. mode 'toggle' flips whatever
+    // Voice Commands is currently set to; 'on'/'off' set it directly.
+    if (msg.event === 'voice.setEnabled' && msg.payload?.mode) {
+      const mode = msg.payload.mode;
+      const next = mode === 'toggle' ? !isVoiceListening() : mode === 'on';
+      setVoiceEnabled(next);
       return;
     }
     // scenes.play — Pulse Scenes (the text/media/light/shape/fill/counter/
@@ -975,15 +1008,7 @@ app.whenReady().then(async () => {
       recognitionWords: cfg.voiceRecognitionWords, liveCaptionsEnabled: cfg.voiceLiveCaptionsEnabled,
     };
   });
-  ipcMain.handle('voice:set-enabled', (_e, enabled: boolean) => {
-    if (enabled && !isModelReady(loadConfig().voiceModelSize)) {
-      return { ok: false, needsModelDownload: true };
-    }
-    saveConfig({ voiceEnabled: enabled });
-    if (enabled) startVoiceListening(loadConfig().voiceInputDeviceId);
-    else stopVoiceListening();
-    return { ok: true };
-  });
+  ipcMain.handle('voice:set-enabled', (_e, enabled: boolean) => setVoiceEnabled(enabled));
   ipcMain.handle('voice:set-input-device', (_e, deviceId: string | null) => {
     saveConfig({ voiceInputDeviceId: deviceId });
     if (isVoiceListening()) setVoiceInputDevice(deviceId);

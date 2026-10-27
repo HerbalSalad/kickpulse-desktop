@@ -48,6 +48,7 @@ export interface PulseAction {
   sceneName?: string;
   lightReactionId?: string; // light_fire_reaction target (electron/light-reactions.ts)
   lightSceneId?: string;    // light_set_scene target (electron/light-scenes.ts)
+  setAsDefault?: boolean;   // light_set_scene — false = apply once without changing the baseline (2026-10-27)
   lightTarget?: string;
   lightOn?: boolean;
   lightBrightness?: number;
@@ -78,6 +79,7 @@ export interface PulseAction {
   categoryName?: string;
   gameId?: string;
   gameName?: string;
+  mode?: 'on' | 'off' | 'toggle'; // voice_set_enabled (2026-10-27)
 }
 
 // No desktopOnly filtering here — this IS the desktop app: every one of
@@ -133,6 +135,7 @@ export const ACTION_DEFS: { type: string; label: string; hint: string }[] = [
   { type: 'light_fire_reaction', label: '🎨 Fire a Light Reaction', hint: 'Plays a saved timed lighting effect, then restores whichever Light Scene is active' },
   { type: 'light_set_scene',    label: '💡 Set Light Scene',       hint: 'Makes a saved Light Scene the new baseline and applies it now' },
   { type: 'virtual_light_set_state', label: '🔆 Set Virtual Light State', hint: 'Changes a Virtual Light widget on your overlay — no hardware needed' },
+  { type: 'voice_set_enabled', label: '🎙️ Toggle Voice Commands', hint: 'Turns Voice Commands on, off, or flips whatever it\'s currently set to' },
 ];
 
 export const SEQUENCE_DEFS: { type: string; label: string; hint: string }[] = [
@@ -698,12 +701,20 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
               )
             )}
             {a.type === 'light_set_scene' && (
-              lightScenes.length > 0 ? (
-                <Select value={a.lightSceneId ?? ''} onChange={(v) => setAction(idx, { lightSceneId: v || undefined })}
-                  options={[{ value: '', label: 'pick a scene…' }, ...lightScenes.map((s) => ({ value: s.id, label: s.name }))]} style={{ width: 220 }} />
-              ) : (
-                <span style={{ fontSize: 12, color: '#6b7280' }}>No scenes yet — create one on the Light Scenes page first</span>
-              )
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {lightScenes.length > 0 ? (
+                  <Select value={a.lightSceneId ?? ''} onChange={(v) => setAction(idx, { lightSceneId: v || undefined })}
+                    options={[{ value: '', label: 'pick a scene…' }, ...lightScenes.map((s) => ({ value: s.id, label: s.name }))]} style={{ width: 220 }} />
+                ) : (
+                  <span style={{ fontSize: 12, color: '#6b7280' }}>No scenes yet — create one on the Light Scenes page first</span>
+                )}
+                <Toggle checked={a.setAsDefault !== false} onChange={(v) => setAction(idx, { setAsDefault: v })}
+                  label="Also make this the new default" />
+              </div>
+            )}
+            {a.type === 'voice_set_enabled' && (
+              <Select value={a.mode ?? 'toggle'} onChange={(v) => setAction(idx, { mode: v as 'on' | 'off' | 'toggle' })}
+                options={[{ value: 'toggle', label: 'Toggle (flip current state)' }, { value: 'on', label: 'Turn On' }, { value: 'off', label: 'Turn Off' }]} style={{ width: 200 }} />
             )}
             {a.type === 'virtual_light_set_state' && (
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
