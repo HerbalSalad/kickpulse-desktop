@@ -64,6 +64,33 @@ import type {
 } from './types';
 import { initUpdater, getUpdaterStatus, checkForUpdates, installUpdate } from './updater';
 
+// Single-instance lock (2026-10-27) — found via a real incident, not
+// theorized: a voice-triggered "Start Streaming (OBS)" fired THREE nearly
+// simultaneous RTMP connect attempts on the same output (confirmed from the
+// user's own OBS log — "Cannot apply a new video_t object after the encoder
+// has been initialized", repeated 3x within ~470ms), and crashed OBS once.
+// This app had no single-instance guard at all — if a second copy is ever
+// running (a fresh install launched without quitting the old one first,
+// which happened repeatedly this session while testing v0.2.1/0.2.2/0.2.3),
+// EACH copy independently connects to both the server's WS hub and the
+// SAME local OBS/Meld, so one trigger fires once per running copy, all at
+// once. Harmless for an idempotent action (switching to the same scene
+// twice is a no-op); genuinely harmful for StartStream specifically, since
+// OBS's own stream encoder isn't reentrant — two near-simultaneous start
+// calls race directly into the error above. `process.exit(0)` (not just
+// `app.quit()`) is deliberate: `app.quit()` only requests a quit, it
+// doesn't halt further synchronous module execution, so without the exit
+// call this losing instance would still run every side-effecting line below
+// (media server, OBS/Meld connections, WS subscribe) before the quit
+// actually took effect.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  process.exit(0);
+}
+app.on('second-instance', () => {
+  createMainWindow();
+});
+
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 
 const TEST_HOTKEY = 'CommandOrControl+Alt+J';
