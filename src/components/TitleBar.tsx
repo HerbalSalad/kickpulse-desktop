@@ -17,10 +17,12 @@ const BAR_HEIGHT = 36;
 
 export default function TitleBar() {
   const [maximized, setMaximized] = useState(false);
+  const [version, setVersion] = useState('');
 
   useEffect(() => {
     window.kickpulseDesktop.windowIsMaximized().then(setMaximized);
     window.kickpulseDesktop.onWindowMaximizedChange(setMaximized);
+    window.kickpulseDesktop.getAppVersion().then(setVersion);
   }, []);
 
   return (
@@ -56,6 +58,11 @@ export default function TitleBar() {
         }}
       >
         KickPulse
+        {version && (
+          <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 500, color: COLORS.textDim, opacity: 0.6 }}>
+            v{version}
+          </span>
+        )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <UpdateBadge />

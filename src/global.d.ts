@@ -317,6 +317,7 @@ declare global {
       windowClose: () => Promise<void>;
       windowIsMaximized: () => Promise<boolean>;
       onWindowMaximizedChange: (cb: (maximized: boolean) => void) => void;
+      getAppVersion: () => Promise<string>;
 
       testJumpscare: () => Promise<void>;
       testScene: () => Promise<IpcResult>;

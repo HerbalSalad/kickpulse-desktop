@@ -743,6 +743,13 @@ app.whenReady().then(async () => {
   ipcMain.handle('window:close', () => mainWindow?.close());
   ipcMain.handle('window:is-maximized', () => !!mainWindow?.isMaximized());
 
+  // Lets the UI show which build is actually installed (2026-10-27, direct
+  // request after a release-pipeline bug briefly left auto-update unable to
+  // tell two versions apart) — reads package.json's version via Electron's
+  // own app.getVersion(), the same value electron-builder stamps into the
+  // installer, so this can never drift from what was actually shipped.
+  ipcMain.handle('app:get-version', () => app.getVersion());
+
   ipcMain.handle('config:disconnect', () => {
     wsHandle?.close();
     wsHandle = null;

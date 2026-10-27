@@ -86,6 +86,7 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
   windowMaximizeToggle: (): Promise<void> => ipcRenderer.invoke('window:maximize-toggle'),
   windowClose: (): Promise<void> => ipcRenderer.invoke('window:close'),
   windowIsMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:is-maximized'),
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:get-version'),
   onWindowMaximizedChange: (cb: (maximized: boolean) => void) => {
     ipcRenderer.on('window:maximized-change', (_e, maximized: boolean) => cb(maximized));
   },
