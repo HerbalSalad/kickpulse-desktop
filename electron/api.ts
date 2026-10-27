@@ -85,18 +85,25 @@ export function getViewerInfo(apiKey: string, usernames: string[], platform: 'ki
 // same /community-bans/settings route the website's own page uses —
 // authenticateKickOrApiKey already accepts this app's API key there, same
 // as every other route this app calls.
-export function getCommunityBanSettings(apiKey: string): Promise<{ minThreatLevelToWarn: number }> {
-  return request<{ minThreatLevelToWarn: number }>('/community-bans/settings', apiKey);
+export function getCommunityBanSettings(apiKey: string): Promise<{ minThreatLevelToWarn: number; applyMinDistinctBans: number }> {
+  return request('/community-bans/settings', apiKey);
 }
-export function setCommunityBanSettings(apiKey: string, minThreatLevelToWarn: number): Promise<{ ok: boolean; minThreatLevelToWarn: number }> {
-  return request('/community-bans/settings', apiKey, { method: 'POST', body: JSON.stringify({ minThreatLevelToWarn }) });
+// Widened 2026-10-27 to accept either field (previously minThreatLevelToWarn
+// only) so this same function/route can also save the Apply All Threshold
+// setting the website's /community-bans page already has — see
+// CommunityBansPage.tsx's own Apply All Threshold section.
+export function setCommunityBanSettings(apiKey: string, patch: { minThreatLevelToWarn?: number; applyMinDistinctBans?: number }): Promise<{ ok: boolean; minThreatLevelToWarn: number; applyMinDistinctBans: number }> {
+  return request('/community-bans/settings', apiKey, { method: 'POST', body: JSON.stringify(patch) });
 }
 
 // Community Bans (2026-10-20, native desktop page — direct request: "we
 // should have access to the community bans in the desktop app as well").
 // Same routes/communityBans.js endpoints the website's own
-// src/pages/CommunityBans.tsx already uses.
-export interface CommunityBanEntry { id: string; username: string; reason: string; source: string | null; created_at: string; appliedStatus: 'banned' | 'not_found' | 'error' | 'unbanned' | null; }
+// src/pages/CommunityBans.tsx already uses. `threat` added 2026-10-27 — the
+// server already returned it (routes/communityBans.js's /list), this type
+// just never declared it, so the native page had no way to show "how many
+// distinct streamers have banned this username" per entry.
+export interface CommunityBanEntry { id: string; username: string; reason: string; source: string | null; created_at: string; appliedStatus: 'banned' | 'not_found' | 'error' | 'unbanned' | null; threat: { level: number; label: string; count: number }; }
 export interface ApplyResult { total: number; banned: number; notFound: number; errors: number; skipped: number; }
 export interface Squad { id: string; name: string; invite_code: string; created_by: string; memberCount: number; members: string[]; }
 export interface ViewerFlag { id: string; username: string; platform: string; category: string; reason: string | null; flagged_by: string | null; created_at: string; }

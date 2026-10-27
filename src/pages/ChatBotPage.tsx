@@ -41,6 +41,20 @@ export default function ChatBotPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [counters, setCounters] = useState<string[]>([]);
+  const [ignoreBots, setIgnoreBots] = useState(true);
+  const [botUsernames, setBotUsernames] = useState('');
+  const [ignoreBotsSaving, setIgnoreBotsSaving] = useState(false);
+  useEffect(() => {
+    window.kickpulseDesktop.chatBot.getSettings().then((d: any) => {
+      setIgnoreBots(d?.ignore_bots !== false);
+      setBotUsernames(d?.bot_usernames || '');
+    }).catch(() => {});
+  }, []);
+  const saveIgnoreBots = async () => {
+    setIgnoreBotsSaving(true);
+    try { await window.kickpulseDesktop.chatBot.saveSettings({ ignore_bots: ignoreBots, bot_usernames: botUsernames }); }
+    finally { setIgnoreBotsSaving(false); }
+  };
   // Rich Actions on a Command/Keyword (2026-10-21) are Premium-only — same
   // status.me?.userId/isPremium read PulseEnginePage.tsx already does from
   // GET /desktop/me. userId is needed by this page's own PulseActionEditor
@@ -147,6 +161,31 @@ export default function ChatBotPage() {
         <SpamFilterTab />
       ) : (
         <>
+          {(tab === 'variable' || tab === 'walkon' || tab === 'keyword') && (
+            <div style={{ marginBottom: 14, padding: 12, background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 10 }}>
+              <Toggle checked={ignoreBots} onChange={setIgnoreBots} label="Ignore known bots (Nightbot, StreamElements, etc.)" />
+              <p style={{ fontSize: 11, color: COLORS.textFaint, marginTop: 4 }}>
+                Stops known chat bots from triggering walk-ons, commands, and keyword replies — so your bot doesn't
+                "welcome in" or respond to someone else's bot. Applies across Commands, Walk-ons, and Keywords.
+              </p>
+              {ignoreBots && (
+                <div style={{ marginTop: 8 }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: COLORS.textDim, marginBottom: 6 }}>
+                    Also ignore these usernames (comma or newline separated)
+                  </label>
+                  <textarea value={botUsernames} onChange={(e) => setBotUsernames(e.target.value)} rows={2}
+                    placeholder="mybotname, anothermod_bot"
+                    style={{ width: '100%', padding: 10, background: COLORS.panelAlt, border: `1px solid ${COLORS.border}`, borderRadius: 8, color: COLORS.text, fontSize: 13, fontFamily: 'monospace', resize: 'vertical' }} />
+                  <p style={{ fontSize: 11, color: COLORS.textFaint, marginTop: 4 }}>
+                    Your own username is always ignored here, even if typed in above — this can't be used to silence your own commands.
+                  </p>
+                </div>
+              )}
+              <Button variant="primary" onClick={saveIgnoreBots} disabled={ignoreBotsSaving} style={{ marginTop: 10 }}>
+                {ignoreBotsSaving ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
             <div style={{ flex: 1, minWidth: 180, display: 'flex', alignItems: 'center', gap: 8, background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: '7px 10px' }}>
               <Search size={14} color={COLORS.textFaint} />

@@ -33,10 +33,17 @@ interface Rule {
 }
 interface Draft { name: string; trigger: Trigger; actions: PulseAction[]; cooldownSeconds: number }
 
+// Medium's hint flags its real tradeoff (2026-10-27, direct report: "any of
+// them besides small gives me massive lag... even on the medium"): it's a
+// "-lgraph" model — a smaller download because its recognition graph is
+// expanded lazily DURING listening instead of once up front, which is a
+// real, Vosk-documented reason it can run slower WHILE recognizing than
+// Large despite its much smaller file size — not a bug, just a genuinely
+// different size-vs-speed tradeoff than the file size alone suggests.
 const MODEL_OPTIONS: { value: VoiceModelSize; label: string; hint: string }[] = [
   { value: 'small', label: 'Small', hint: '~40MB — fastest, least accurate' },
-  { value: 'medium', label: 'Medium', hint: '~130MB' },
-  { value: 'large', label: 'Large', hint: '~1.8GB — most common accurate English model' },
+  { value: 'medium', label: 'Medium', hint: '~130MB — a smaller download, but can run slower WHILE listening than Large (its graph is built on the fly) — try Large if this feels sluggish' },
+  { value: 'large', label: 'Large', hint: '~1.8GB — most common accurate English model, often snappier live than Medium despite the bigger download' },
   { value: 'xlarge', label: 'Extra Large', hint: '~2.3GB — most accurate, slowest' },
 ];
 

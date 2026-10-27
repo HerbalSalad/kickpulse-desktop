@@ -29,7 +29,12 @@ export const MODEL_SOURCES: Record<VoiceModelSize, ModelSource> = {
   medium: {
     url: 'https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip',
     dirName: 'vosk-model-en-us-0.22-lgraph',
-    label: 'Medium', sizeHint: '~130MB',
+    // 2026-10-27: the hint now flags the real "-lgraph" tradeoff — direct
+    // report that medium specifically felt laggy, confirmed as a genuine
+    // Vosk characteristic (lazy graph expansion during decode, not a bug)
+    // rather than something fixable here — see VoiceCommandsPage.tsx's
+    // matching MODEL_OPTIONS hint for the fuller explanation.
+    label: 'Medium', sizeHint: '~130MB — smaller download, but can decode slower live than Large',
   },
   large: {
     url: 'https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip',

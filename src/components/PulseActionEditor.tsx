@@ -22,7 +22,7 @@
 //     website's own version which only ever sees whatever this app last
 //     REPORTED to it.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 import { Select, TextInput, NumberInput, Row, Toggle, ColorInput, Dropdown, COLORS } from './ui';
 import { supabase } from '../lib/supabase';
 import PulseTriggerEditor, { DEFAULT_TRIGGERS, type Trigger } from './PulseTriggerEditor';
@@ -363,6 +363,18 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
   const categoryDefs = filterTypes ? ACTION_DEFS.filter(d => filterTypes.includes(d.type)) : ACTION_DEFS;
   const setAction = (idx: number, patch: Partial<PulseAction>) => onChange(actions.map((a, i) => i === idx ? { ...a, ...patch } : a));
   const removeAction = (idx: number) => onChange(actions.filter((_, i) => i !== idx));
+  // Reorder (2026-10-27, direct request — mirrors the website's own
+  // PulseActionEditor.tsx fix) — swaps with the neighbor in the VISIBLE
+  // (filterTypes-filtered) order, not necessarily idx±1 in the full array.
+  const visibleIndices = actions.map((_, i) => i).filter(i => !filterTypes || filterTypes.includes(actions[i].type));
+  const moveAction = (idx: number, dir: -1 | 1) => {
+    const pos = visibleIndices.indexOf(idx);
+    const swapWith = visibleIndices[pos + dir];
+    if (swapWith === undefined) return;
+    const next = [...actions];
+    [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
+    onChange(next);
+  };
   const addAction = () => {
     const t = filterTypes?.[0] ?? 'bot_message';
     onChange([...actions, t === 'bot_message' ? { type: t, message: '' } : { type: t }]);
@@ -405,7 +417,7 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
       {actions
         .map((a, idx) => ({ a, idx }))
         .filter(({ a }) => !filterTypes || filterTypes.includes(a.type))
-        .map(({ a, idx }) => {
+        .map(({ a, idx }, pos, visible) => {
         const isWait = a.type === 'wait', isWaitFor = a.type === 'wait_for';
         const tone = isWait ? { border: 'rgba(245,158,11,0.3)', bg: 'rgba(245,158,11,0.06)' }
           : isWaitFor ? { border: 'rgba(56,189,248,0.3)', bg: 'rgba(56,189,248,0.06)' }
@@ -750,9 +762,19 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
               ) : <span style={{ fontSize: 12, color: '#6b7280' }}>No tasks yet — add one on the To-Do List widget's settings page first</span>
             )}
 
-            <button onClick={() => removeAction(idx)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: 6 }}>
-              <Trash2 size={15} />
-            </button>
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
+              <button onClick={() => moveAction(idx, -1)} disabled={pos === 0} title="Move up"
+                style={{ background: 'none', border: 'none', color: '#6b7280', cursor: pos === 0 ? 'default' : 'pointer', padding: 6, opacity: pos === 0 ? 0.3 : 1 }}>
+                <ChevronUp size={15} />
+              </button>
+              <button onClick={() => moveAction(idx, 1)} disabled={pos === visible.length - 1} title="Move down"
+                style={{ background: 'none', border: 'none', color: '#6b7280', cursor: pos === visible.length - 1 ? 'default' : 'pointer', padding: 6, opacity: pos === visible.length - 1 ? 0.3 : 1 }}>
+                <ChevronDown size={15} />
+              </button>
+              <button onClick={() => removeAction(idx)} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: 6 }}>
+                <Trash2 size={15} />
+              </button>
+            </div>
           </div>
         );
       })}

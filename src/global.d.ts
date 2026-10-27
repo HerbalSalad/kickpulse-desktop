@@ -475,8 +475,8 @@ declare global {
         apply: (opts?: { entryIds?: string[] }) => Promise<any>;
         unban: (entryId: string) => Promise<any>;
         unbanAll: () => Promise<any>;
-        getSettings: () => Promise<{ minThreatLevelToWarn: number }>;
-        setSettings: (level: number) => Promise<any>;
+        getSettings: () => Promise<{ minThreatLevelToWarn: number; applyMinDistinctBans: number }>;
+        setSettings: (patch: { minThreatLevelToWarn?: number; applyMinDistinctBans?: number }) => Promise<any>;
         getFlags: () => Promise<{ flags: any[] }>;
         addFlag: (body: { username: string; category: string; reason?: string }) => Promise<any>;
         removeFlag: (id: string) => Promise<any>;
