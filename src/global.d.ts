@@ -194,9 +194,14 @@ declare global {
   }
 
   // Live Chat & Event Feed + Community Bans/Viewer Flags warnings (2026-10-19).
+  // platform widened to the real 4-platform union (2026-10-27 fix — this had
+  // drifted from electron/chat-feed.ts's own FeedPlatform type, which already
+  // included youtube/tiktok via main.ts's real pushChatMessage calls for
+  // both; this ambient type just hadn't caught up).
+  type FeedPlatform = 'kick' | 'twitch' | 'youtube' | 'tiktok';
   interface ChatFeedMessage {
     id: string;
-    platform: 'kick' | 'twitch';
+    platform: FeedPlatform;
     username: string;
     content: string;
     color: string | null;
@@ -206,7 +211,7 @@ declare global {
   }
   interface EventFeedItem {
     id: string;
-    platform: 'kick' | 'twitch';
+    platform: FeedPlatform;
     eventType: string;
     summary: string;
     createdAt: string;

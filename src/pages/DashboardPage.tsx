@@ -31,6 +31,35 @@ import { useStickToBottom } from '../hooks/useStickToBottom';
 
 const PLATFORM_COLOR: Record<string, string> = { kick: '#53fc18', twitch: '#9146ff', youtube: '#ff0000', tiktok: '#ff0050' };
 
+// Platform icons for the Chat panel (2026-10-27, direct request: "platform
+// icon would be cool too") — replaces the plain colored dot with each
+// platform's own real logo mark, same source paths as the website's own
+// ChatHistory.tsx (kick/twitch) plus YouTube/TikTok since this feed, unlike
+// that page, already carries all four.
+function PlatformIcon({ platform }: { platform: FeedPlatform }) {
+  const color = PLATFORM_COLOR[platform];
+  const common = { width: 11, height: 11, style: { flexShrink: 0 } } as const;
+  switch (platform) {
+    case 'kick':
+      return <svg {...common} viewBox="0 0 24 24" fill={color}><path d="M0 0H9V5.34H12V2.67H15V0H24V8.01H21V10.67H18V13.34H21V16.01H24V24H15V21.34H12V18.68H9V24H0Z" /></svg>;
+    case 'twitch':
+      return <svg {...common} viewBox="0 0 24 24" fill={color}><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z" /></svg>;
+    case 'youtube':
+      return <svg {...common} viewBox="0 0 24 24" fill={color}><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8ZM9.5 15.6V8.4L15.8 12Z" /></svg>;
+    case 'tiktok':
+      return <svg {...common} viewBox="0 0 24 24" fill={color}><path d="M16.6 5.82s.51.5 0 0A4.278 4.278 0 0 1 15.54 3h-3.09v12.4a2.592 2.592 0 1 1-1.83-2.49V9.68a5.712 5.712 0 1 0 4.92 5.66V9.1a7.17 7.17 0 0 0 4.17 1.33V7.32a4.28 4.28 0 0 1-3.11-1.5Z" /></svg>;
+    default:
+      return null;
+  }
+}
+
+// Short HH:MM, matching the Event Feed panel's own timestamp format below
+// (toLocaleTimeString) minus seconds — chat rows are denser, so a compact
+// time reads better here.
+function formatChatTime(iso: string): string {
+  try { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); } catch { return ''; }
+}
+
 const FLAG_CATEGORY_LABELS: Record<string, string> = {
   suspicious: 'Suspicious', harassment: 'Harassment/Bullying', hate_speech: 'Hate Speech/Slurs',
   spam: 'Spam', self_promo: 'Self Promo', ban_evasion: 'Ban Evasion', bot_viewbot: 'Bot/Viewbot',
@@ -201,7 +230,10 @@ export default function DashboardPage() {
                   display: 'flex', alignItems: 'baseline', gap: 6, padding: '4px 8px', fontSize: 13,
                   background: warn ? 'rgba(239,68,68,0.06)' : undefined, borderRadius: 6,
                 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: PLATFORM_COLOR[m.platform], flexShrink: 0 }} />
+                  <span style={{ fontSize: 10.5, color: COLORS.textFaint, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                    {formatChatTime(m.createdAt)}
+                  </span>
+                  <PlatformIcon platform={m.platform} />
                   {m.badges?.length ? <span dangerouslySetInnerHTML={{ __html: renderBadges(m) }} /> : null}
                   <span style={{ fontWeight: 700, color: m.color || COLORS.text, flexShrink: 0 }}>{m.username}</span>
                   {warn && <ViewerBadge info={info} />}

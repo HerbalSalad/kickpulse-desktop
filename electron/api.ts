@@ -198,8 +198,8 @@ export function reportLightReactions(apiKey: string, reactions: { id: string; na
 
 // Voice Commands (2026-10-23) — the website's /pulse-rules/targets/
 // voice-phrases, /pulse-rules/voice-trigger, and /pulse-rules/voice-caption
-// (routes/pulseRules.js), desktop-only (same single-tester gate as the
-// lights-manager/OBS routes above). fetchVoicePhrases is polled
+// (routes/pulseRules.js), Premium-gated (same gate as Pulse Engine itself —
+// see lib/desktopOnlyActions.js on the website). fetchVoicePhrases is polled
 // periodically by electron/voiceCommands.ts so this app knows what to
 // listen for (now the full per-rule shape — matchMode/minConfidence/
 // triggerImmediately, authored from either the dedicated Voice Commands

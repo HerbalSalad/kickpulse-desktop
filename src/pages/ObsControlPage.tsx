@@ -58,6 +58,8 @@ export default function ObsControlPage() {
   const [itemsLoading, setItemsLoading] = useState(false);
   const [streamBusy, setStreamBusy] = useState(false);
   const [recordBusy, setRecordBusy] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const [recordError, setRecordError] = useState<string | null>(null);
   // Live-ticking local clock for the duration readouts — OBS only pushes a
   // fresh outputDuration on each state CHANGE, not every second, so this
   // just advances the last-known value locally between those pushes.
@@ -115,12 +117,16 @@ export default function ObsControlPage() {
 
   const toggleStream = async () => {
     setStreamBusy(true);
-    await (status?.streaming ? window.kickpulseDesktop.obsStopStream() : window.kickpulseDesktop.obsStartStream());
+    setStreamError(null);
+    const res = await (status?.streaming ? window.kickpulseDesktop.obsStopStream() : window.kickpulseDesktop.obsStartStream());
+    if (!res.ok) setStreamError(res.error || `Failed to ${status?.streaming ? 'stop' : 'start'} streaming`);
     setStreamBusy(false);
   };
   const toggleRecord = async () => {
     setRecordBusy(true);
-    await (status?.recording ? window.kickpulseDesktop.obsStopRecord() : window.kickpulseDesktop.obsStartRecord());
+    setRecordError(null);
+    const res = await (status?.recording ? window.kickpulseDesktop.obsStopRecord() : window.kickpulseDesktop.obsStartRecord());
+    if (!res.ok) setRecordError(res.error || `Failed to ${status?.recording ? 'stop' : 'start'} recording`);
     setRecordBusy(false);
   };
 
@@ -147,6 +153,8 @@ export default function ObsControlPage() {
   const [meldConnecting, setMeldConnecting] = useState(false);
   const [meldStreamBusy, setMeldStreamBusy] = useState(false);
   const [meldRecordBusy, setMeldRecordBusy] = useState(false);
+  const [meldStreamError, setMeldStreamError] = useState<string | null>(null);
+  const [meldRecordError, setMeldRecordError] = useState<string | null>(null);
   const [selectedMeldScene, setSelectedMeldScene] = useState<string | null>(null);
 
   useEffect(() => {
@@ -180,12 +188,16 @@ export default function ObsControlPage() {
 
   const meldToggleStream = async () => {
     setMeldStreamBusy(true);
-    await (meldStatus?.streaming ? window.kickpulseDesktop.meldStopStream() : window.kickpulseDesktop.meldStartStream());
+    setMeldStreamError(null);
+    const res = await (meldStatus?.streaming ? window.kickpulseDesktop.meldStopStream() : window.kickpulseDesktop.meldStartStream());
+    if (!res.ok) setMeldStreamError(res.error || `Failed to ${meldStatus?.streaming ? 'stop' : 'start'} streaming`);
     setMeldStreamBusy(false);
   };
   const meldToggleRecord = async () => {
     setMeldRecordBusy(true);
-    await (meldStatus?.recording ? window.kickpulseDesktop.meldStopRecord() : window.kickpulseDesktop.meldStartRecord());
+    setMeldRecordError(null);
+    const res = await (meldStatus?.recording ? window.kickpulseDesktop.meldStopRecord() : window.kickpulseDesktop.meldStartRecord());
+    if (!res.ok) setMeldRecordError(res.error || `Failed to ${meldStatus?.recording ? 'stop' : 'start'} recording`);
     setMeldRecordBusy(false);
   };
 
@@ -248,36 +260,50 @@ export default function ObsControlPage() {
 
           <Section title="Stream & Record">
             <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: status.streaming ? 'rgba(239,68,68,0.12)' : COLORS.panel, border: `1px solid ${status.streaming ? '#ef4444' : COLORS.border}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Radio size={16} color={status.streaming ? '#ef4444' : COLORS.textDim} />
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: status.streaming ? '#fca5a5' : COLORS.text }}>
-                      {status.streaming ? 'Streaming' : 'Not streaming'}
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: status.streaming ? 'rgba(239,68,68,0.12)' : COLORS.panel, border: `1px solid ${status.streaming ? '#ef4444' : COLORS.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Radio size={16} color={status.streaming ? '#ef4444' : COLORS.textDim} />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: status.streaming ? '#fca5a5' : COLORS.text }}>
+                        {status.streaming ? 'Streaming' : 'Not streaming'}
+                      </div>
+                      {status.streaming && <div style={{ fontSize: 11, color: COLORS.textDim }}>{formatDuration(liveStreamMs)}</div>}
                     </div>
-                    {status.streaming && <div style={{ fontSize: 11, color: COLORS.textDim }}>{formatDuration(liveStreamMs)}</div>}
                   </div>
+                  <Button variant={status.streaming ? 'danger' : 'primary'} onClick={toggleStream} disabled={streamBusy}>
+                    {status.streaming ? <Square size={13} /> : <Play size={13} />}
+                    {status.streaming ? 'Stop' : 'Start'}
+                  </Button>
                 </div>
-                <Button variant={status.streaming ? 'danger' : 'primary'} onClick={toggleStream} disabled={streamBusy}>
-                  {status.streaming ? <Square size={13} /> : <Play size={13} />}
-                  {status.streaming ? 'Stop' : 'Start'}
-                </Button>
+                {streamError && (
+                  <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5', fontSize: 12 }}>
+                    {streamError}
+                  </div>
+                )}
               </div>
 
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: status.recording ? 'rgba(239,68,68,0.12)' : COLORS.panel, border: `1px solid ${status.recording ? '#ef4444' : COLORS.border}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Circle size={16} color={status.recording ? '#ef4444' : COLORS.textDim} fill={status.recording ? '#ef4444' : 'none'} />
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: status.recording ? '#fca5a5' : COLORS.text }}>
-                      {status.recording ? 'Recording' : 'Not recording'}
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: status.recording ? 'rgba(239,68,68,0.12)' : COLORS.panel, border: `1px solid ${status.recording ? '#ef4444' : COLORS.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Circle size={16} color={status.recording ? '#ef4444' : COLORS.textDim} fill={status.recording ? '#ef4444' : 'none'} />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: status.recording ? '#fca5a5' : COLORS.text }}>
+                        {status.recording ? 'Recording' : 'Not recording'}
+                      </div>
+                      {status.recording && <div style={{ fontSize: 11, color: COLORS.textDim }}>{formatDuration(liveRecordMs)}</div>}
                     </div>
-                    {status.recording && <div style={{ fontSize: 11, color: COLORS.textDim }}>{formatDuration(liveRecordMs)}</div>}
                   </div>
+                  <Button variant={status.recording ? 'danger' : 'primary'} onClick={toggleRecord} disabled={recordBusy}>
+                    {status.recording ? <Square size={13} /> : <Play size={13} />}
+                    {status.recording ? 'Stop' : 'Start'}
+                  </Button>
                 </div>
-                <Button variant={status.recording ? 'danger' : 'primary'} onClick={toggleRecord} disabled={recordBusy}>
-                  {status.recording ? <Square size={13} /> : <Play size={13} />}
-                  {status.recording ? 'Stop' : 'Start'}
-                </Button>
+                {recordError && (
+                  <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5', fontSize: 12 }}>
+                    {recordError}
+                  </div>
+                )}
               </div>
             </div>
           </Section>
@@ -352,30 +378,44 @@ export default function ObsControlPage() {
 
           <Section title="Stream & Record">
             <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: meldStatus.streaming ? 'rgba(239,68,68,0.12)' : COLORS.panel, border: `1px solid ${meldStatus.streaming ? '#ef4444' : COLORS.border}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Radio size={16} color={meldStatus.streaming ? '#ef4444' : COLORS.textDim} />
-                  <div style={{ fontSize: 13, fontWeight: 600, color: meldStatus.streaming ? '#fca5a5' : COLORS.text }}>
-                    {meldStatus.streaming ? 'Streaming' : 'Not streaming'}
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: meldStatus.streaming ? 'rgba(239,68,68,0.12)' : COLORS.panel, border: `1px solid ${meldStatus.streaming ? '#ef4444' : COLORS.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Radio size={16} color={meldStatus.streaming ? '#ef4444' : COLORS.textDim} />
+                    <div style={{ fontSize: 13, fontWeight: 600, color: meldStatus.streaming ? '#fca5a5' : COLORS.text }}>
+                      {meldStatus.streaming ? 'Streaming' : 'Not streaming'}
+                    </div>
                   </div>
+                  <Button variant={meldStatus.streaming ? 'danger' : 'primary'} onClick={meldToggleStream} disabled={meldStreamBusy}>
+                    {meldStatus.streaming ? <Square size={13} /> : <Play size={13} />}
+                    {meldStatus.streaming ? 'Stop' : 'Start'}
+                  </Button>
                 </div>
-                <Button variant={meldStatus.streaming ? 'danger' : 'primary'} onClick={meldToggleStream} disabled={meldStreamBusy}>
-                  {meldStatus.streaming ? <Square size={13} /> : <Play size={13} />}
-                  {meldStatus.streaming ? 'Stop' : 'Start'}
-                </Button>
+                {meldStreamError && (
+                  <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5', fontSize: 12 }}>
+                    {meldStreamError}
+                  </div>
+                )}
               </div>
 
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: meldStatus.recording ? 'rgba(239,68,68,0.12)' : COLORS.panel, border: `1px solid ${meldStatus.recording ? '#ef4444' : COLORS.border}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Circle size={16} color={meldStatus.recording ? '#ef4444' : COLORS.textDim} fill={meldStatus.recording ? '#ef4444' : 'none'} />
-                  <div style={{ fontSize: 13, fontWeight: 600, color: meldStatus.recording ? '#fca5a5' : COLORS.text }}>
-                    {meldStatus.recording ? 'Recording' : 'Not recording'}
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: meldStatus.recording ? 'rgba(239,68,68,0.12)' : COLORS.panel, border: `1px solid ${meldStatus.recording ? '#ef4444' : COLORS.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Circle size={16} color={meldStatus.recording ? '#ef4444' : COLORS.textDim} fill={meldStatus.recording ? '#ef4444' : 'none'} />
+                    <div style={{ fontSize: 13, fontWeight: 600, color: meldStatus.recording ? '#fca5a5' : COLORS.text }}>
+                      {meldStatus.recording ? 'Recording' : 'Not recording'}
+                    </div>
                   </div>
+                  <Button variant={meldStatus.recording ? 'danger' : 'primary'} onClick={meldToggleRecord} disabled={meldRecordBusy}>
+                    {meldStatus.recording ? <Square size={13} /> : <Play size={13} />}
+                    {meldStatus.recording ? 'Stop' : 'Start'}
+                  </Button>
                 </div>
-                <Button variant={meldStatus.recording ? 'danger' : 'primary'} onClick={meldToggleRecord} disabled={meldRecordBusy}>
-                  {meldStatus.recording ? <Square size={13} /> : <Play size={13} />}
-                  {meldStatus.recording ? 'Stop' : 'Start'}
-                </Button>
+                {meldRecordError && (
+                  <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5', fontSize: 12 }}>
+                    {meldRecordError}
+                  </div>
+                )}
               </div>
             </div>
           </Section>

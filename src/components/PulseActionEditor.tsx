@@ -71,11 +71,11 @@ export interface PulseAction {
   op?: 'start' | 'pause' | 'reset';
 }
 
-// No desktopOnly filtering here — unlike the website (which hides these from
-// everyone but one gated tester account, see lib/desktopOnlyActions.js), this
-// IS the desktop app: every one of these is exactly what it's for, and the
-// server-side gate still independently enforces who's allowed to actually
-// save them.
+// No desktopOnly filtering here — this IS the desktop app: every one of
+// these is exactly what it's for. The website shows the same full list now
+// too (the desktop app went public 2026-10-27, see lib/desktopOnlyActions.js
+// on the website) — Pulse Engine's own Premium gate is what actually
+// restricts who can save a rule at all, not a desktop-feature allowlist.
 export const ACTION_DEFS: { type: string; label: string; hint: string }[] = [
   { type: 'bot_message',        label: '💬 Send Chat Message',   hint: 'Bot speaks — {username} and {amount} are substituted' },
   { type: 'award_points',       label: '🪙 Award Pulse Points',  hint: 'Granted to the viewer who triggered it' },
