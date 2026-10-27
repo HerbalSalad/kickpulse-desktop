@@ -131,6 +131,7 @@ export const ACTION_DEFS: { type: string; label: string; hint: string }[] = [
   { type: 'meld_record_clip',  label: '🎞 Save Clip (Meld)',      hint: 'Saves the last few seconds to disk right now — e.g. bind this to a !clip chat command' },
   { type: 'meld_show_replay',  label: '📺 Show Replay (Meld)',    hint: 'Plays the most recent clip back as an overlay on the current scene' },
   { type: 'meld_dismiss_replay', label: '✖ Dismiss Replay (Meld)', hint: 'Removes the replay overlay' },
+  { type: 'save_clip_any', label: '🎬 Save Clip (Any)', hint: 'Saves via OBS Replay Buffer, Aitum Backtrack, AND Meld all at once — whichever is actually connected saves, the rest no-op' },
   { type: 'light_set_state',    label: '💡 Set Light State',      hint: 'Changes a configured WLED/Hue/Govee light' },
   { type: 'light_fire_reaction', label: '🎨 Fire a Light Reaction', hint: 'Plays a saved timed lighting effect, then restores whichever Light Scene is active' },
   { type: 'light_set_scene',    label: '💡 Set Light Scene',       hint: 'Makes a saved Light Scene the new baseline and applies it now' },
@@ -668,11 +669,13 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
                 </span>
               </div>
             )}
-            {a.type === 'meld_record_clip' && (
+            {(a.type === 'meld_record_clip' || a.type === 'save_clip_any') && (
               <>
                 <NumberInput value={a.meldClipDuration ?? 0} min={0} max={90}
                   onChange={(v) => setAction(idx, { meldClipDuration: Math.max(0, Math.min(90, v)) })} style={{ width: 90 }} />
-                <span style={{ fontSize: 12, color: '#9ca3af' }}>seconds — 0 (or blank) saves the max available length</span>
+                <span style={{ fontSize: 12, color: '#9ca3af' }}>
+                  {a.type === 'save_clip_any' ? "seconds for Meld's clip — OBS/Aitum use their own configured length" : 'seconds — 0 (or blank) saves the max available length'}
+                </span>
               </>
             )}
             {a.type === 'light_set_state' && (
