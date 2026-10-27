@@ -31,7 +31,7 @@ interface Rule {
   id: string; name: string; enabled: boolean; trigger: Trigger; actions: PulseAction[];
   cooldown_seconds: number; user_cooldown_seconds: number;
 }
-interface Draft { name: string; trigger: Trigger; actions: PulseAction[] }
+interface Draft { name: string; trigger: Trigger; actions: PulseAction[]; cooldownSeconds: number }
 
 const MODEL_OPTIONS: { value: VoiceModelSize; label: string; hint: string }[] = [
   { value: 'small', label: 'Small', hint: '~40MB — fastest, least accurate' },
@@ -186,11 +186,11 @@ export default function VoiceCommandsPage() {
 
   const newDraft = () => {
     setEditingId(null);
-    setDraft({ name: '', trigger: { ...DEFAULT_TRIGGERS.voice_command }, actions: [{ type: 'bot_message', message: '' }] });
+    setDraft({ name: '', trigger: { ...DEFAULT_TRIGGERS.voice_command }, actions: [{ type: 'bot_message', message: '' }], cooldownSeconds: 0 });
   };
   const startEdit = (rule: Rule) => {
     setEditingId(rule.id);
-    setDraft({ name: rule.name, trigger: { ...rule.trigger }, actions: JSON.parse(JSON.stringify(rule.actions)) });
+    setDraft({ name: rule.name, trigger: { ...rule.trigger }, actions: JSON.parse(JSON.stringify(rule.actions)), cooldownSeconds: rule.cooldown_seconds ?? 0 });
   };
   const closeDraft = () => { setDraft(null); setEditingId(null); };
 
@@ -200,7 +200,7 @@ export default function VoiceCommandsPage() {
     setLoadError(null);
     try {
       const body = {
-        name: draft.trigger.phrase.trim(), enabled: true, cooldown_seconds: 0, user_cooldown_seconds: 0,
+        name: draft.trigger.phrase.trim(), enabled: true, cooldown_seconds: Math.max(0, draft.cooldownSeconds || 0), user_cooldown_seconds: 0,
         trigger: draft.trigger, actions: draft.actions,
       };
       if (editingId) await window.kickpulseDesktop.pulseRules.update(editingId, body);
@@ -286,6 +286,10 @@ export default function VoiceCommandsPage() {
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, background: 'rgba(0,0,0,0.3)', border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: '10px 14px', marginBottom: 14 }}>
                 <PulseTriggerEditor value={draft.trigger} onChange={(t) => setDraft((d) => d && { ...d, trigger: t })} userId={userId} hideTypePicker />
               </div>
+              <Row label="Cooldown" hint="Blocks this exact phrase from firing again until this many seconds have passed since it last fired — e.g. stops 'clip that' from spamming if you say it twice in excitement. Just one shared clock, since you're the only one who can trigger your own voice.">
+                <NumberInput value={draft.cooldownSeconds} min={0} onChange={(v) => setDraft((d) => d && { ...d, cooldownSeconds: Math.max(0, v) })} style={{ width: 90 }} />
+                <span style={{ fontSize: 12, color: COLORS.textFaint, marginLeft: 8 }}>seconds — 0 = no cooldown</span>
+              </Row>
               <PulseActionEditor actions={draft.actions} onChange={(a) => setDraft((d) => d && { ...d, actions: a })} userId={userId} />
               <div style={{ display: 'flex', gap: 10, paddingTop: 14 }}>
                 <Button variant="primary" onClick={saveDraft} disabled={saving || !draft.trigger.phrase?.trim()}>{saving ? 'Saving…' : editingId ? 'Save Changes' : 'Create'}</Button>
@@ -311,6 +315,7 @@ export default function VoiceCommandsPage() {
                   <p style={{ fontSize: 11, color: COLORS.textFaint, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {rule.trigger.matchMode === 'exact' ? 'exact match' : 'anywhere in sentence'} · ≥{rule.trigger.minConfidence ?? 50}% confidence
                     {rule.trigger.triggerImmediately ? ' · immediate' : ''}
+                    {rule.cooldown_seconds > 0 ? ` · ${rule.cooldown_seconds}s cooldown` : ''}
                     {' '}<span style={{ color: '#c4b5fd' }}>→</span> {rule.actions.map(describeAction).join(' → ')}
                   </p>
                 </div>
