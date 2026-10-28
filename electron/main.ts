@@ -25,7 +25,7 @@ import {
 } from './chat-feed';
 import {
   getMe, getJumpscareConfig, getScenesConfig, reportObsState, reportObsSources, reportMeldState, reportMeldLayers, reportLightDevices,
-  reportLightScenes, reportLightReactions,
+  reportLightScenes, reportLightReactions, reportVoiceEnabled,
   listPulseRules, createPulseRule, updatePulseRule, deletePulseRule,
   listPulseJobs, skipPulseJob, cancelPulseJob,
   getKickRewards, getTwitchRewards, getPointsRewards, getCounters, getTtsVoices, searchStreamCategories, runPulseAction,
@@ -216,7 +216,22 @@ function setVoiceEnabled(enabled: boolean): { ok: boolean; needsModelDownload?: 
   saveConfig({ voiceEnabled: enabled });
   if (enabled) startVoiceListening(loadConfig().voiceInputDeviceId);
   else stopVoiceListening();
+  reportVoiceEnabledNow();
   return { ok: true };
+}
+
+// reportVoiceEnabledNow — tells the website whether Voice Commands is
+// actually on right now, so the Stream Deck plugin's own Voice Commands
+// button can show a real green/red fill instead of guessing. Called right
+// here (covers both the IPC handler and the voice.setEnabled WS case, since
+// both already funnel through setVoiceEnabled above), plus once at startup
+// and on the same periodic interval the light/OBS/Meld state reports
+// already use, same reasoning as those: an open-but-idle app shouldn't look
+// stale to the website just because nothing happened to toggle in a while.
+function reportVoiceEnabledNow(): void {
+  const apiKey = loadConfig().apiKey;
+  if (!apiKey) return;
+  reportVoiceEnabled(apiKey, loadConfig().voiceEnabled).catch(() => {});
 }
 
 async function connectAccount(apiKey: string): Promise<void> {
@@ -1298,6 +1313,7 @@ app.whenReady().then(async () => {
     reportLightDevicesNow();
     reportLightScenesNow();
     reportLightReactionsNow();
+    reportVoiceEnabledNow();
   }, 4 * 60 * 1000);
   // Apply whichever Light Scene is the current baseline the moment the app
   // opens — "They should be able to set a default for their lights that
@@ -1310,6 +1326,7 @@ app.whenReady().then(async () => {
   if (loadConfig().voiceEnabled && isModelReady(loadConfig().voiceModelSize)) {
     startVoiceListening(loadConfig().voiceInputDeviceId);
   }
+  reportVoiceEnabledNow();
 });
 
 app.on('window-all-closed', () => {

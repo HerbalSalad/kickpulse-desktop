@@ -238,6 +238,20 @@ export function reportVoiceCaption(apiKey: string, text: string, isFinal: boolea
   });
 }
 
+// reportVoiceEnabled (2026-10-27, direct request: "a visual indicator would
+// be much better" — the Stream Deck plugin's Voice Commands button had no
+// way to show whether it's actually on or off) — same shape/reasoning as
+// reportLightScenes above. Reported right after every toggle (setVoiceEnabled
+// in main.ts) and on the same periodic re-report interval the light/OBS/Meld
+// state already uses, so the Stream Deck plugin's poll never shows a stale
+// state for long even if a toggle's own report call happened to fail.
+export function reportVoiceEnabled(apiKey: string, enabled: boolean): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/desktop/voice-state', apiKey, {
+    method: 'POST',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 // ── Pulse Engine (2026-10-15) ───────────────────────────────────────────────
 // Unlike everything above (and unlike every widget config, which this app
 // reads/writes straight from Supabase — see src/lib/supabase.ts's own file
