@@ -26,6 +26,7 @@ import {
 import {
   getMe, getJumpscareConfig, getScenesConfig, reportObsState, reportObsSources, reportMeldState, reportMeldLayers, reportLightDevices,
   reportLightScenes, reportLightReactions, reportVoiceEnabled,
+  listStreamInfoPresets, createStreamInfoPreset, deleteStreamInfoPreset, applyStreamInfoPreset,
   listPulseRules, createPulseRule, updatePulseRule, deletePulseRule,
   listPulseJobs, skipPulseJob, cancelPulseJob,
   getKickRewards, getTwitchRewards, getPointsRewards, getCounters, getTtsVoices, searchStreamCategories, runPulseAction,
@@ -1097,6 +1098,14 @@ app.whenReady().then(async () => {
   ipcMain.handle('pulse:tts-voices', () => getTtsVoices(requireApiKey()));
   ipcMain.handle('pulse:search-categories', (_e, platform: 'kick' | 'twitch', query: string) => searchStreamCategories(requireApiKey(), platform, query));
   ipcMain.handle('pulse:run-action', (_e, action: Record<string, unknown>) => runPulseAction(requireApiKey(), action));
+
+  // Stream Info Presets (2026-10-28) — real server-backed presets, see
+  // electron/api.ts's own header for why this replaced the old
+  // localStorage-only, one-platform-per-preset version.
+  ipcMain.handle('stream-info:list-presets', () => listStreamInfoPresets(requireApiKey()));
+  ipcMain.handle('stream-info:create-preset', (_e, body) => createStreamInfoPreset(requireApiKey(), body));
+  ipcMain.handle('stream-info:delete-preset', (_e, id: string) => deleteStreamInfoPreset(requireApiKey(), id));
+  ipcMain.handle('stream-info:apply-preset', (_e, id: string) => applyStreamInfoPreset(requireApiKey(), id));
 
   // ----- Chat Bot (2026-10-18, native rebuild) -----
   ipcMain.handle('chatbot:commands-list', () => listCommands(requireApiKey()));

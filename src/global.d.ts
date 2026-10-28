@@ -428,6 +428,13 @@ declare global {
         runAction: (action: Record<string, unknown>) => Promise<{ ok: boolean }>;
       };
 
+      streamInfo: {
+        listPresets: () => Promise<any[]>;
+        createPreset: (body: Record<string, any>) => Promise<any>;
+        deletePreset: (id: string) => Promise<{ ok: boolean }>;
+        applyPreset: (id: string) => Promise<{ ok: boolean }>;
+      };
+
       chatBot: {
         listCommands: () => Promise<any[]>;
         createCommand: (body: Record<string, any>) => Promise<any>;

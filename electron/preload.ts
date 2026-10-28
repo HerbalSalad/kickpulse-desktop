@@ -251,6 +251,15 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
     runAction: (action: Record<string, unknown>): Promise<{ ok: boolean }> => ipcRenderer.invoke('pulse:run-action', action),
   },
 
+  // Stream Info Presets (2026-10-28) — real server-backed presets shared
+  // with the website's own /stream-info page; see electron/api.ts.
+  streamInfo: {
+    listPresets: (): Promise<any[]> => ipcRenderer.invoke('stream-info:list-presets'),
+    createPreset: (body: Record<string, any>): Promise<any> => ipcRenderer.invoke('stream-info:create-preset', body),
+    deletePreset: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('stream-info:delete-preset', id),
+    applyPreset: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('stream-info:apply-preset', id),
+  },
+
   // Chat Bot (2026-10-18, native rebuild) — same real-network-round-trip
   // reasoning as pulseRules above: every route here already enforces the
   // website's own validation/limits/cooldowns, so this calls those routes

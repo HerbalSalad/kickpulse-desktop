@@ -366,6 +366,47 @@ export function runPulseAction(apiKey: string, action: Record<string, unknown>):
   });
 }
 
+// Stream Info Presets (2026-10-28) — real server-backed presets, same
+// /stream-info/presets routes the website's own /stream-info page uses
+// (routes/streamInfo.js). Replaces StreamInfoPage.tsx's old localStorage-
+// only presets, which could only ever hold ONE platform's category per
+// preset — direct, blunt feedback: "Presets need to be able to do kick
+// and twitch, its dumb to have to have one for each." A preset here
+// stores BOTH platforms' category on the same row (kick_category_id AND
+// twitch_game_id), applied together in one call — same shape the website
+// and the Stream Deck plugin's Stream Info button already use.
+export interface StreamInfoPreset {
+  id: string;
+  name: string;
+  title: string | null;
+  kick_category_id: string | null;
+  kick_category_name: string | null;
+  twitch_game_id: string | null;
+  twitch_game_name: string | null;
+}
+export function listStreamInfoPresets(apiKey: string): Promise<StreamInfoPreset[]> {
+  return request<StreamInfoPreset[]>('/stream-info/presets', apiKey);
+}
+export function createStreamInfoPreset(apiKey: string, body: {
+  name: string;
+  title?: string;
+  kickCategoryId?: string | number;
+  kickCategoryName?: string;
+  twitchGameId?: string | number;
+  twitchGameName?: string;
+}): Promise<StreamInfoPreset> {
+  return request<StreamInfoPreset>('/stream-info/presets', apiKey, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+export function deleteStreamInfoPreset(apiKey: string, id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/stream-info/presets/${encodeURIComponent(id)}`, apiKey, { method: 'DELETE' });
+}
+export function applyStreamInfoPreset(apiKey: string, id: string): Promise<{ ok: boolean; preset: StreamInfoPreset }> {
+  return request(`/stream-info/presets/${encodeURIComponent(id)}/apply`, apiKey, { method: 'POST' });
+}
+
 // ── Chat Bot (2026-10-18) — native rebuild, replacing the embedded website
 // view. Every route here was widened to authenticateKickOrApiKey the same
 // day specifically for this (see routes/commands.js, routes/counters.js,

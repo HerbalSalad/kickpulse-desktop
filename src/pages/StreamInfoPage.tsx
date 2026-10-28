@@ -2,38 +2,61 @@
 // Engine rule needed (2026-10-27, direct request: "for the desktop app, go
 // ahead and add the stream title category presets, I like that idea and
 // most people only play a few games so that could work well"). Mirrors the
-// website's own /stream-info page (src/pages/StreamInfo.tsx) — same live
-// category search, same set_stream_title/set_kick_category/
-// set_twitch_category actions, fired right now via
-// window.kickpulseDesktop.pulseRules.runAction (POST /pulse-rules/run-action,
-// no saved rule needed) instead of saved as a rule. A separate "Presets"
-// list (saved locally via electron-store, see electron/store.ts) lets a
-// streamer save a few categories they actually switch between — "most
-// people only play a few games" — as one-click buttons, on top of the live
-// search for anything else.
-import { useEffect, useState } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+// website's own /stream-info page (src/pages/StreamInfo.tsx).
+//
+// Rebuilt 2026-10-28 (direct, blunt feedback: "desktop app needs a way to
+// quickly update the category for both kick and twitch without using a
+// preset. Presets need to be able to do kick and twitch, its dumb to have
+// to have one for each.") — the original version applied one platform at
+// a time (pick a category, it fires immediately for just that platform)
+// and its presets were localStorage-only, one platform per preset. Now:
+// two independent category pickers (Kick + Twitch) feed ONE "Update
+// Categories" button that applies both together, and Presets are real,
+// server-backed rows (electron/api.ts's listStreamInfoPresets/etc, same
+// /stream-info/presets routes the website's own page and the Stream Deck
+// plugin's Stream Info button already use) — one preset can hold BOTH
+// platforms' category (plus a title) at once, applied together in one
+// click, exactly like the website.
+import { useCallback, useEffect, useState } from 'react';
+import { Pencil, RefreshCw, Trash2, Zap } from 'lucide-react';
 import { Page, Section, Row, TextInput, Button, IconButton, COLORS } from '../components/ui';
 
 interface CategoryOption { id: string | number; name: string }
-interface Preset { id: string; name: string; categoryId: string | number; platform: 'kick' | 'twitch' }
+interface Preset {
+  id: string;
+  name: string;
+  title: string | null;
+  kick_category_id: string | null;
+  kick_category_name: string | null;
+  twitch_game_id: string | null;
+  twitch_game_name: string | null;
+}
 
-function CategorySearch({ platform, onPick }: { platform: 'kick' | 'twitch'; onPick: (opt: CategoryOption) => void }) {
+function CategorySearch({ platform, selected, onPick }: {
+  platform: 'kick' | 'twitch';
+  selected: CategoryOption | null;
+  onPick: (opt: CategoryOption | null) => void;
+}) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CategoryOption[]>([]);
+
+  useEffect(() => { setQuery(selected?.name ?? ''); }, [selected?.name]);
+
   const search = async (q: string) => {
     setQuery(q);
+    if (!q.trim()) onPick(null);
     if (q.trim().length < 2) { setResults([]); return; }
     const r = await window.kickpulseDesktop.pulseRules.searchCategories(platform, q.trim()).catch(() => []);
     setResults(r);
   };
+
   return (
     <div>
       <TextInput value={query} onChange={search} placeholder={`Search ${platform === 'kick' ? 'Kick' : 'Twitch'} categories…`} />
       {results.length > 0 && (
-        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
+        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 160, overflowY: 'auto' }}>
           {results.map((r) => (
-            <button key={r.id} onClick={() => { onPick(r); setQuery(''); setResults([]); }}
+            <button key={r.id} onClick={() => { onPick(r); setQuery(r.name); setResults([]); }}
               style={{ textAlign: 'left', padding: '6px 10px', borderRadius: 8, background: COLORS.panelAlt, border: `1px solid ${COLORS.border}`, color: COLORS.text, fontSize: 13, cursor: 'pointer' }}>
               {r.name}
             </button>
@@ -44,75 +67,148 @@ function CategorySearch({ platform, onPick }: { platform: 'kick' | 'twitch'; onP
   );
 }
 
-const PRESETS_KEY = 'kp_category_presets';
-
 export default function StreamInfoPage() {
   const [title, setTitle] = useState('');
+  const [kickCategory, setKickCategory] = useState<CategoryOption | null>(null);
+  const [twitchCategory, setTwitchCategory] = useState<CategoryOption | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [presets, setPresets] = useState<Preset[]>([]);
-  const [newPresetName, setNewPresetName] = useState('');
-  const [newPresetPlatform, setNewPresetPlatform] = useState<'kick' | 'twitch'>('kick');
-  const [pendingCategory, setPendingCategory] = useState<CategoryOption | null>(null);
+  const [applying, setApplying] = useState(false);
 
-  useEffect(() => {
-    try { setPresets(JSON.parse(localStorage.getItem(PRESETS_KEY) || '[]')); } catch { /* starts empty */ }
+  const [presets, setPresets] = useState<Preset[]>([]);
+  const [loadingPresets, setLoadingPresets] = useState(true);
+  const [presetName, setPresetName] = useState('');
+  const [savingPreset, setSavingPreset] = useState(false);
+  const [applyingPresetId, setApplyingPresetId] = useState<string | null>(null);
+
+  const loadPresets = useCallback(() => {
+    setLoadingPresets(true);
+    window.kickpulseDesktop.streamInfo.listPresets()
+      .then((rows) => setPresets(Array.isArray(rows) ? rows : []))
+      .catch(() => {})
+      .finally(() => setLoadingPresets(false));
   }, []);
 
-  const savePresets = (next: Preset[]) => {
-    setPresets(next);
-    try { localStorage.setItem(PRESETS_KEY, JSON.stringify(next)); } catch { /* best-effort only */ }
-  };
+  useEffect(loadPresets, [loadPresets]);
 
-  const run = async (action: Record<string, unknown>, label: string) => {
-    setStatus(`${label}…`);
+  // Updates the title AND whichever category picker(s) actually have a
+  // pending selection, together, in one press — the direct ask: "a way to
+  // quickly update the category for both kick and twitch... without using
+  // a preset." Kick and Twitch have entirely separate category id spaces,
+  // so this still fires two underlying actions, just from one button
+  // instead of two separate ones.
+  const updateStreamInfo = async () => {
+    if (!title.trim() && !kickCategory && !twitchCategory) return;
+    setApplying(true);
+    setStatus(null);
+    const results: string[] = [];
     try {
-      await window.kickpulseDesktop.pulseRules.runAction(action);
-      setStatus(`${label} ✓`);
+      if (title.trim()) {
+        await window.kickpulseDesktop.pulseRules.runAction({ type: 'set_stream_title', title: title.trim(), platform: 'both' });
+        results.push('Title ✓');
+      }
+      if (kickCategory) {
+        await window.kickpulseDesktop.pulseRules.runAction({ type: 'set_kick_category', categoryId: kickCategory.id });
+        results.push(`Kick: ${kickCategory.name} ✓`);
+      }
+      if (twitchCategory) {
+        await window.kickpulseDesktop.pulseRules.runAction({ type: 'set_twitch_category', gameId: String(twitchCategory.id) });
+        results.push(`Twitch: ${twitchCategory.name} ✓`);
+      }
+      setStatus(results.join('  ·  '));
     } catch (err: any) {
-      setStatus(`${label} failed: ${err?.message || 'unknown error'}`);
+      setStatus(`Failed: ${err?.message || 'unknown error'}`);
+    } finally {
+      setApplying(false);
     }
   };
 
-  const updateTitle = () => {
-    if (!title.trim()) return;
-    run({ type: 'set_stream_title', title: title.trim(), platform: 'both' }, 'Title updated');
+  const savePreset = async () => {
+    if (!presetName.trim()) return;
+    setSavingPreset(true);
+    try {
+      await window.kickpulseDesktop.streamInfo.createPreset({
+        name: presetName.trim(),
+        title: title.trim() || undefined,
+        kickCategoryId: kickCategory?.id,
+        kickCategoryName: kickCategory?.name,
+        twitchGameId: twitchCategory?.id,
+        twitchGameName: twitchCategory?.name,
+      });
+      setPresetName('');
+      loadPresets();
+      setStatus('Preset saved ✓');
+    } catch (err: any) {
+      setStatus(`Failed to save preset: ${err?.message || 'unknown error'}`);
+    } finally {
+      setSavingPreset(false);
+    }
   };
 
-  const applyCategory = (opt: CategoryOption, platform: 'kick' | 'twitch') => {
-    run(
-      platform === 'kick' ? { type: 'set_kick_category', categoryId: opt.id } : { type: 'set_twitch_category', gameId: String(opt.id) },
-      `Category set to "${opt.name}"`
-    );
+  const applyPreset = async (preset: Preset) => {
+    setApplyingPresetId(preset.id);
+    try {
+      await window.kickpulseDesktop.streamInfo.applyPreset(preset.id);
+      setStatus(`Applied "${preset.name}" ✓`);
+    } catch (err: any) {
+      setStatus(`Failed to apply preset: ${err?.message || 'unknown error'}`);
+    } finally {
+      setApplyingPresetId(null);
+    }
   };
 
-  const addPreset = () => {
-    if (!pendingCategory || !newPresetName.trim()) return;
-    savePresets([...presets, { id: `preset_${Date.now()}`, name: newPresetName.trim(), categoryId: pendingCategory.id, platform: newPresetPlatform }]);
-    setPendingCategory(null);
-    setNewPresetName('');
+  const deletePreset = async (preset: Preset) => {
+    try {
+      await window.kickpulseDesktop.streamInfo.deletePreset(preset.id);
+      setPresets((prev) => prev.filter((p) => p.id !== preset.id));
+    } catch {
+      setStatus('Failed to delete preset');
+    }
   };
 
   return (
     <Page title="Stream Info" icon={<Pencil size={22} color={COLORS.accent} />}
-      subtitle="Change your title and category on Kick and Twitch — no Pulse Engine rule needed.">
-      <Section title="Title">
-        <Row label="New title">
+      subtitle="Change your title and category on Kick and Twitch together — no Pulse Engine rule needed.">
+      <Section title="Title & Category">
+        <Row label="Title">
           <TextInput value={title} onChange={setTitle} placeholder="What's happening on stream?" />
         </Row>
-        <Button variant="primary" onClick={updateTitle}>Update Title (Kick + Twitch)</Button>
+        <Row label="Kick Category">
+          <CategorySearch platform="kick" selected={kickCategory} onPick={setKickCategory} />
+        </Row>
+        <Row label="Twitch Category">
+          <CategorySearch platform="twitch" selected={twitchCategory} onPick={setTwitchCategory} />
+        </Row>
+        <Button variant="primary" onClick={updateStreamInfo} disabled={applying}>
+          {applying ? 'Updating…' : 'Update Title + Both Categories'}
+        </Button>
       </Section>
 
-      <Section title="Category Presets" right={<span style={{ fontSize: 12, color: COLORS.textFaint }}>most people only play a few games</span>}>
-        {presets.length === 0 ? (
-          <p style={{ fontSize: 13, color: COLORS.textFaint }}>No presets saved yet — search below and save one.</p>
+      <Section
+        title="Presets"
+        right={<IconButton title="Refresh" onClick={loadPresets}><RefreshCw size={13} /></IconButton>}
+      >
+        <p style={{ fontSize: 12, color: COLORS.textFaint, marginBottom: 10 }}>
+          Save the title/categories above as a named preset — one preset can hold Kick AND Twitch together, applied in one click. Shared with the website and the Stream Deck plugin.
+        </p>
+
+        {loadingPresets ? (
+          <p style={{ fontSize: 13, color: COLORS.textFaint }}>Loading…</p>
+        ) : presets.length === 0 ? (
+          <p style={{ fontSize: 13, color: COLORS.textFaint }}>No presets saved yet.</p>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
             {presets.map((p) => (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Button onClick={() => applyCategory({ id: p.categoryId, name: p.name }, p.platform)}>
-                  {p.name} ({p.platform === 'kick' ? 'Kick' : 'Twitch'})
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8, background: COLORS.panelAlt, border: `1px solid ${COLORS.border}` }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>{p.name}</div>
+                  <div style={{ fontSize: 11.5, color: COLORS.textFaint }}>
+                    {[p.title, p.kick_category_name && `Kick: ${p.kick_category_name}`, p.twitch_game_name && `Twitch: ${p.twitch_game_name}`].filter(Boolean).join(' · ') || 'Nothing set'}
+                  </div>
+                </div>
+                <Button onClick={() => applyPreset(p)} disabled={applyingPresetId === p.id}>
+                  {applyingPresetId === p.id ? 'Applying…' : 'Apply'}
                 </Button>
-                <IconButton title="Remove preset" danger onClick={() => savePresets(presets.filter((x) => x.id !== p.id))}>
+                <IconButton title="Delete preset" danger onClick={() => deletePreset(p)}>
                   <Trash2 size={13} />
                 </IconButton>
               </div>
@@ -120,20 +216,12 @@ export default function StreamInfoPage() {
           </div>
         )}
 
-        <Row label="Platform">
-          <select value={newPresetPlatform} onChange={(e) => setNewPresetPlatform(e.target.value as 'kick' | 'twitch')}
-            style={{ background: COLORS.panelAlt, border: `1px solid ${COLORS.border}`, borderRadius: 8, color: COLORS.text, padding: '6px 10px', fontSize: 13 }}>
-            <option value="kick">Kick</option>
-            <option value="twitch">Twitch</option>
-          </select>
+        <Row label="New preset name">
+          <TextInput value={presetName} onChange={setPresetName} placeholder="e.g. Ranked Valorant" />
         </Row>
-        <CategorySearch platform={newPresetPlatform} onPick={setPendingCategory} />
-        {pendingCategory && (
-          <Row label={`Save "${pendingCategory.name}" as…`}>
-            <TextInput value={newPresetName} onChange={setNewPresetName} placeholder="Button name, e.g. Valorant" />
-            <Button variant="primary" onClick={addPreset}><Plus size={13} /> Save Preset</Button>
-          </Row>
-        )}
+        <Button variant="primary" onClick={savePreset} disabled={savingPreset || !presetName.trim()}>
+          <Zap size={13} /> {savingPreset ? 'Saving…' : 'Save as Preset'}
+        </Button>
       </Section>
 
       {status && <p style={{ fontSize: 12.5, color: COLORS.textDim }}>{status}</p>}
