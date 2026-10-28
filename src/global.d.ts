@@ -530,7 +530,7 @@ declare global {
 
       updater: {
         getStatus: () => Promise<UpdaterStatus>;
-        check: () => Promise<void>;
+        check: () => Promise<{ ok: boolean; error?: string }>;
         install: () => Promise<void>;
         onStatus: (cb: (status: UpdaterStatus) => void) => void;
       };

@@ -41,18 +41,30 @@ export function getUpdaterStatus(): UpdaterStatus {
   return currentStatus;
 }
 
-export function checkForUpdates(): void {
+// Returns a real result now (2026-10-28, direct request after "its not
+// fucking giving me an update" — the only way to actually SEE whether a
+// check happened at all was waiting up to 2 hours for the next scheduled
+// one, since nothing in the UI could trigger one on demand). The timer-
+// based callers below (setTimeout/setInterval) still just fire-and-forget
+// this exactly like before; TitleBar.tsx's manual "click version to check"
+// button is the new thing that actually reads the return value.
+export function checkForUpdates(): Promise<{ ok: boolean; error?: string }> {
   // electron-updater reads app-update.yml from the packaged app's resources
   // — it doesn't exist in a dev/unpacked run (npm start / npm run dev), so
   // skip entirely rather than letting every dev session log a spurious error.
-  if (!app.isPackaged) return;
-  autoUpdater.checkForUpdates().catch((err) => {
-    // Most common cause here is just "no network" or GitHub being briefly
-    // unreachable — not worth alarming the user over, same reasoning this
-    // app already applies to other best-effort background checks (see
-    // main.ts's display-watch/OBS-report comments). Logged, not surfaced.
-    console.error('[updater] checkForUpdates failed:', err?.message || err);
-  });
+  if (!app.isPackaged) return Promise.resolve({ ok: false, error: 'Not available in a dev build' });
+  return autoUpdater.checkForUpdates().then(
+    () => ({ ok: true }),
+    (err) => {
+      // Most common cause here is just "no network" or GitHub being briefly
+      // unreachable — not worth alarming the user over on the automatic
+      // background checks (same reasoning this app already applies to other
+      // best-effort background checks, see main.ts's display-watch/OBS-
+      // report comments) — but a MANUAL check now surfaces this for real.
+      console.error('[updater] checkForUpdates failed:', err?.message || err);
+      return { ok: false, error: err?.message || String(err) };
+    },
+  );
 }
 
 export function installUpdate(): void {

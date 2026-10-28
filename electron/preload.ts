@@ -391,7 +391,7 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
   // Auto-update (2026-10-26) — see electron/updater.ts.
   updater: {
     getStatus: (): Promise<UpdaterStatus> => ipcRenderer.invoke('updater:get-status'),
-    check: (): Promise<void> => ipcRenderer.invoke('updater:check'),
+    check: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('updater:check'),
     install: (): Promise<void> => ipcRenderer.invoke('updater:install'),
     onStatus: (cb: (status: UpdaterStatus) => void) => {
       ipcRenderer.removeAllListeners('updater:status-update');

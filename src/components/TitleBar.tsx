@@ -18,12 +18,42 @@ const BAR_HEIGHT = 36;
 export default function TitleBar() {
   const [maximized, setMaximized] = useState(false);
   const [version, setVersion] = useState('');
+  // Manual update check (2026-10-28, direct request after "its not fucking
+  // giving me an update" — there was no way to force a check at all, only
+  // a silent 10s-after-launch check then every 2 hours, with zero feedback
+  // either way if nothing was found). Clicking the version number now
+  // triggers a real check and shows what happened — UpdateBadge still owns
+  // what happens once an update IS found/downloading/ready.
+  const [checkState, setCheckState] = useState<'idle' | 'checking' | 'done' | 'error'>('idle');
 
   useEffect(() => {
     window.kickpulseDesktop.windowIsMaximized().then(setMaximized);
     window.kickpulseDesktop.onWindowMaximizedChange(setMaximized);
     window.kickpulseDesktop.getAppVersion().then(setVersion);
   }, []);
+
+  const checkForUpdatesNow = async () => {
+    if (checkState === 'checking') return;
+    setCheckState('checking');
+    const res = await window.kickpulseDesktop.updater.check();
+    if (!res.ok) {
+      setCheckState('error');
+      setTimeout(() => setCheckState('idle'), 5000);
+      return;
+    }
+    // "Up to date" only means something if there genuinely ISN'T an update —
+    // checking the real status here (rather than just trusting res.ok, which
+    // only means "the network request succeeded") avoids this flashing a
+    // misleading "up to date" right as UpdateBadge is about to show a real
+    // one it found.
+    const status = await window.kickpulseDesktop.updater.getStatus();
+    if (status.phase === 'idle') {
+      setCheckState('done');
+      setTimeout(() => setCheckState('idle'), 3000);
+    } else {
+      setCheckState('idle');
+    }
+  };
 
   return (
     <div
@@ -59,8 +89,23 @@ export default function TitleBar() {
       >
         KickPulse
         {version && (
-          <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 500, color: COLORS.textDim, opacity: 0.6 }}>
-            v{version}
+          <span
+            onClick={checkForUpdatesNow}
+            title={checkState === 'error' ? 'Check failed — click to retry' : 'Click to check for updates'}
+            style={{
+              marginLeft: 6,
+              fontSize: 10,
+              fontWeight: 500,
+              color: checkState === 'error' ? COLORS.danger : COLORS.textDim,
+              opacity: checkState === 'idle' ? 0.6 : 1,
+              cursor: 'pointer',
+              WebkitAppRegion: 'no-drag',
+            } as React.CSSProperties}
+          >
+            {checkState === 'checking' ? 'checking for updates…'
+              : checkState === 'done' ? 'you’re up to date ✓'
+              : checkState === 'error' ? 'check failed — retry'
+              : `v${version}`}
           </span>
         )}
       </div>
