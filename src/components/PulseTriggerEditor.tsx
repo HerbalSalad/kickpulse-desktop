@@ -11,7 +11,7 @@ import { Select, TextInput, NumberInput, Row, Toggle } from './ui';
 import { supabase } from '../lib/supabase';
 
 export interface Trigger {
-  type: 'event' | 'chat_command' | 'points_milestone' | 'points_reward_redeemed' | 'goal_completed' | 'goal_milestone' | 'hype_level' | 'wanted_level' | 'first_chat_session' | 'todo_task_completed' | 'jumpscare_maxed' | 'moon_darkened' | 'voice_command';
+  type: 'event' | 'chat_command' | 'points_milestone' | 'points_reward_redeemed' | 'goal_completed' | 'goal_milestone' | 'hype_level' | 'wanted_level' | 'first_chat_session' | 'todo_task_completed' | 'jumpscare_maxed' | 'moon_darkened' | 'credits_finished' | 'voice_command';
   event?: string;
   minAmount?: number;
   rewardId?: string;
@@ -72,6 +72,9 @@ export const TRIGGER_TYPES: { value: Trigger['type']; label: string }[] = [
   { value: 'todo_task_completed', label: 'To-Do List Task Completed' },
   { value: 'jumpscare_maxed',    label: 'Jumpscare Meter Maxed Out' },
   { value: 'moon_darkened',      label: 'Moon Phase Goes Dark' },
+  // credits_finished (2026-10-27, website-ported — "roll credits, THEN
+  // wait for credits to finish, THEN actually end stream").
+  { value: 'credits_finished',   label: 'Credits Roll Finished' },
   { value: 'voice_command',      label: '🎙️ Voice Command' },
 ];
 
@@ -88,6 +91,7 @@ export const DEFAULT_TRIGGERS: Record<Trigger['type'], Trigger> = {
   todo_task_completed: { type: 'todo_task_completed' },
   jumpscare_maxed:    { type: 'jumpscare_maxed' },
   moon_darkened:      { type: 'moon_darkened' },
+  credits_finished:   { type: 'credits_finished' },
   voice_command:      { type: 'voice_command', phrase: '', matchMode: 'contains', minConfidence: 50, triggerImmediately: false },
 };
 
@@ -171,6 +175,7 @@ export function describeTrigger(t: Trigger, lk?: Pick<PulseLookups, 'tasks' | 'k
   if (t.type === 'wanted_level') return `wanted level hits ${t.level ?? '?'} star${t.level === 1 ? '' : 's'}`;
   if (t.type === 'jumpscare_maxed') return 'the Jumpscare Meter maxes out';
   if (t.type === 'moon_darkened') return 'a Moon Phase widget goes fully dark';
+  if (t.type === 'credits_finished') return 'the Credits Roll overlay finishes scrolling';
   if (t.type === 'first_chat_session') return t.username ? `${t.username} first chats this stream` : "any viewer's first chat this stream";
   if (t.type === 'todo_task_completed') {
     const task = lk?.tasks.find(x => x.id === t.taskId);

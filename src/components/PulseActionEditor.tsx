@@ -93,6 +93,7 @@ export const ACTION_DEFS: { type: string; label: string; hint: string }[] = [
   { type: 'spin_wheel',         label: '🎡 Spin the Wheel',      hint: 'Spins one specific wheel, or all active wheels' },
   { type: 'trigger_scene',      label: '🎭 Trigger Scene',       hint: 'Plays one of your Scenes — text, media, lights, shapes, and sound' },
   { type: 'jumpscare',          label: '👻 Trigger Jumpscare',   hint: 'Fires the Jumpscare Meter overlay' },
+  { type: 'roll_credits',       label: '🎬 Roll Credits',        hint: 'Starts your Credits Roll overlay — pair with the "Credits Finished" trigger in a Wait for… step to actually end stream once it\'s done (2026-10-27, website-ported)' },
   { type: 'add_subathon_time',  label: '⏱ Add/Remove Timer Time', hint: 'Adds or removes seconds from one timer, or all running subathon timers' },
   { type: 'increment_variable', label: '🔢 Bump Counter',        hint: 'Increments one of your counters (Counter Display shows it)' },
   { type: 'song_request',       label: '🎵 Queue Song Request',  hint: "Adds the viewer's typed input to the song queue — bypasses !sr role/cost gates" },
