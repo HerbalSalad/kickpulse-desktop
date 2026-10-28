@@ -36,9 +36,17 @@ const PLATFORM_COLOR: Record<string, string> = { kick: '#53fc18', twitch: '#9146
 // platform's own real logo mark, same source paths as the website's own
 // ChatHistory.tsx (kick/twitch) plus YouTube/TikTok since this feed, unlike
 // that page, already carries all four.
+// Sized and positioned identically to the badge icons right next to it
+// (2026-10-28, direct feedback: "platform icon should be the same size as
+// badges") — was 11x11 with no vertical-align set, while every badge
+// (kickBadges.ts's renderBadgeHtml) renders at 16x16 with
+// display:inline-block + vertical-align:middle. Mixing a bare, differently-
+// sized, differently-aligned <svg> into the same `align-items: baseline`
+// row as those is exactly the kind of mismatch that throws off a line's
+// layout — matched here instead of guessed at.
 function PlatformIcon({ platform }: { platform: FeedPlatform }) {
   const color = PLATFORM_COLOR[platform];
-  const common = { width: 11, height: 11, style: { flexShrink: 0 } } as const;
+  const common = { width: 16, height: 16, style: { flexShrink: 0, display: 'inline-block', verticalAlign: 'middle' } } as const;
   switch (platform) {
     case 'kick':
       return <svg {...common} viewBox="0 0 24 24" fill={color}><path d="M0 0H9V5.34H12V2.67H15V0H24V8.01H21V10.67H18V13.34H21V16.01H24V24H15V21.34H12V18.68H9V24H0Z" /></svg>;
@@ -227,16 +235,37 @@ export default function DashboardPage() {
               const warn = shouldWarn(info);
               return (
                 <div key={m.id} style={{
-                  display: 'flex', alignItems: 'baseline', gap: 6, padding: '4px 8px', fontSize: 13,
+                  display: 'flex', alignItems: 'flex-start', gap: 6, padding: '4px 8px', fontSize: 13,
                   background: warn ? 'rgba(239,68,68,0.06)' : undefined, borderRadius: 6,
                 }}>
-                  <span style={{ fontSize: 10.5, color: COLORS.textFaint, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-                    {formatChatTime(m.createdAt)}
+                  {/*
+                    Metadata (time/platform icon/badges/username/warning)
+                    as one atomic, non-wrapping inline-flex cluster — 2026-
+                    10-28, direct feedback: "all badges should show on the
+                    same line... desktop app is pushing badges down in a
+                    column." Previously these were direct flex children of
+                    the OUTER row, `align-items: baseline` mixed with a
+                    differently-sized/aligned platform icon (now fixed
+                    above) and the long message span right beside them —
+                    once the message text actually wrapped (word-break:
+                    break-word, on any real window width), baseline
+                    alignment pinned the badges/icon to the first line's
+                    text baseline while the row's own height grew around
+                    the wrapped message, reading exactly like "badges
+                    pushed down into a column." Grouping them with their
+                    own `align-items: center` and `flexShrink: 0` makes
+                    this cluster immune to that regardless of how the
+                    message text wraps.
+                  */}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    <span style={{ fontSize: 10.5, color: COLORS.textFaint, fontVariantNumeric: 'tabular-nums' }}>
+                      {formatChatTime(m.createdAt)}
+                    </span>
+                    <PlatformIcon platform={m.platform} />
+                    {m.badges?.length ? <span style={{ display: 'inline-flex', alignItems: 'center' }} dangerouslySetInnerHTML={{ __html: renderBadges(m) }} /> : null}
+                    <span style={{ fontWeight: 700, color: m.color || COLORS.text }}>{m.username}</span>
+                    {warn && <ViewerBadge info={info} />}
                   </span>
-                  <PlatformIcon platform={m.platform} />
-                  {m.badges?.length ? <span dangerouslySetInnerHTML={{ __html: renderBadges(m) }} /> : null}
-                  <span style={{ fontWeight: 700, color: m.color || COLORS.text, flexShrink: 0 }}>{m.username}</span>
-                  {warn && <ViewerBadge info={info} />}
                   <span
                     style={{ color: COLORS.textDim, wordBreak: 'break-word' }}
                     dangerouslySetInnerHTML={{ __html: renderChatContent(m) }}
