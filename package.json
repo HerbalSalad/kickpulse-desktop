@@ -12,7 +12,7 @@
     "typecheck": "tsc -p electron/tsconfig.json --noEmit && tsc -p tsconfig.json --noEmit",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder --win",
-    "release": "npm run build && electron-builder --win --publish always"
+    "release": "node scripts/release.js"
   },
   "build": {
     "appId": "com.kickpulse.desktop",
