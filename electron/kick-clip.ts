@@ -6,7 +6,7 @@
 // starts capturing, finalize stops it" wait-then-finalize model). That
 // guess is gone; this is captured directly from kick.com's own frontend
 // making a real clip (website repo's extension/ capture tooling):
-//   1. POST https://web.kick.com/api/v1/clips        { video_id }        -> 201, response has clip_<id>
+//   1. POST https://web.kick.com/api/v1/clips        { video_id }        -> 201, { data: { id: "clip_...", preview_url: "<m3u8>" } }
 //   2. POST https://web.kick.com/api/v1/clips/<id>/finalize
 //        { title, trim_start, trim_duration }                            -> 200, publishes it immediately
 // No "wait N seconds between them" — Kick's clip is retroactive (clipping
@@ -18,20 +18,19 @@
 // video_id is resolved SERVER-SIDE (website repo's lib/kickClipAction.js,
 // via Kick's official GET /public/v1/users/livestreams API) and arrives
 // already in CreateClipParams — this file no longer resolves a channel id
-// itself (the old version's kick.com/api/v2/channels/{slug} lookup is gone,
-// dead weight now that video_id comes in directly).
+// itself.
 //
-// trim_start — still genuinely unresolved, see lib/kickClipAction.js's own
-// header (website repo) for the full story: a first theory ("offset from
-// absolute broadcast start," computed from elapsed time since go-live) was
-// tried and reverted the same day after it made finalize return a real
-// HTTP 500 instead of succeeding — Kick's backend doesn't gracefully clamp
-// an out-of-range trim_start, it falls over. Back to the one value proven
-// to never error: 0 (still not confirmed to mean "now" — two real reports
-// describe different offsets-from-now with it). `debug` below exists
-// specifically to stop guessing a third formula: it surfaces Kick's own
-// real create-response body (which almost certainly carries the actual
-// window length) back through the chat reply on the next test.
+// trim_start — the real fix, found 2026-10-29 after two wrong guesses
+// (absolute-offset-from-broadcast-start caused a real finalize HTTP 500;
+// a flat 0 just grabbed inconsistent, usually-stale footage). The create
+// response's `preview_url` is a real HLS playlist of Kick's own raw
+// extracted window — summing its `#EXTINF` segment durations gives the
+// ACTUAL window length Kick computed for THIS specific request, no
+// guessing a constant that might not even be stable. trim_start is then
+// computed as (that real length) minus the requested clip duration, so it
+// lands on the most recent `duration` seconds of whatever window Kick
+// actually gave us. Falls back to trim_start: 0 (the one value proven to
+// never error) if the playlist can't be fetched or parsed for any reason.
 //
 // Why this has to run in a real BrowserWindow at all (not Node's own
 // fetch): Kick's own clip API sits behind Cloudflare Bot Management, which
@@ -52,17 +51,24 @@ export interface CreateClipResult {
 }
 
 export interface CreateClipParams {
-  kickSlug: string;   // only used to load a real page and build the final clipUrl
-  videoId: string;    // resolved server-side — see header
-  duration: number;   // seconds, already clamped 10-60 by the server
-  trimStart: number;  // seconds into video_id's own recording — resolved server-side, see header
+  kickSlug: string;  // only used to load a real page and build the final clipUrl
+  videoId: string;   // resolved server-side — see header
+  duration: number;  // seconds, already clamped 10-60 by the server
   title: string;
-  debug?: boolean;    // opt-in (!clip ... debug) — see header comment
+  debug?: boolean;   // opt-in (!clip ... debug) — echoes the measured window length/raw response
 }
 
 const PAGE_TIMEOUT_MS = 20_000;
 
-export async function createKickClip({ kickSlug, videoId, duration, trimStart, title, debug }: CreateClipParams): Promise<CreateClipResult> {
+// Sums #EXTINF:<seconds> lines in an HLS playlist — the real, measured
+// length of Kick's raw extracted clip window, not a guessed constant.
+function sumExtinf(m3u8Text: string): number | null {
+  const matches = [...m3u8Text.matchAll(/#EXTINF:([\d.]+)/g)];
+  if (!matches.length) return null;
+  return matches.reduce((sum, m) => sum + parseFloat(m[1]), 0);
+}
+
+export async function createKickClip({ kickSlug, videoId, duration, title, debug }: CreateClipParams): Promise<CreateClipResult> {
   // Visible, not headless — deliberate while this is freshly-verified:
   // Kick's own login/captcha/consent UI (if the session has gone stale)
   // should be seeable and clickable by whoever's at the machine, not
@@ -107,15 +113,33 @@ export async function createKickClip({ kickSlug, videoId, duration, trimStart, t
     if (createResult.status < 200 || createResult.status >= 300) {
       return { ok: false, error: `create failed (HTTP ${createResult.status}): ${createResult.text.slice(0, 300)} [kick.com cookies present: ${cookieNames}]` };
     }
-    const clipIdMatch = /clip_[A-Za-z0-9]+/.exec(createResult.text);
-    if (!clipIdMatch) {
+
+    let createData: any = null;
+    try { createData = JSON.parse(createResult.text); } catch { /* fall through to regex below */ }
+    const clipId = createData?.data?.id ?? /clip_[A-Za-z0-9]+/.exec(createResult.text)?.[0];
+    if (!clipId) {
       return { ok: false, error: `create response had no clip_* id: ${createResult.text.slice(0, 300)}` };
     }
-    const clipId = clipIdMatch[0];
-    // debug: carry Kick's own real create-response body through to the
-    // chat reply regardless of outcome — it's the actual fix for trim_start
-    // once we see it, not something to leave sitting in a discarded variable.
-    const debugInfo = debug ? `create response: ${createResult.text.slice(0, 400)}` : undefined;
+    const previewUrl = createData?.data?.preview_url;
+
+    // Measure the REAL window length from Kick's own preview playlist —
+    // see header. windowLength stays null (falls back to trim_start: 0)
+    // if there's no preview_url, the fetch fails, or it has no #EXTINF
+    // lines to sum.
+    let windowLength: number | null = null;
+    if (previewUrl) {
+      try {
+        const m3u8Text: string = await win.webContents.executeJavaScript(`
+          fetch(${JSON.stringify(previewUrl)}).then(r => r.text()).catch(() => '')
+        `);
+        windowLength = sumExtinf(m3u8Text);
+      } catch { /* best effort — trim_start just falls back to 0 below */ }
+    }
+    const trimStart = windowLength != null ? Math.max(0, Math.round(windowLength - duration)) : 0;
+
+    const debugInfo = debug
+      ? `windowLength=${windowLength != null ? windowLength.toFixed(1) + 's' : 'unknown'} trimStart=${trimStart} create=${createResult.text.slice(0, 250)}`
+      : undefined;
 
     const finalizeResult = await win.webContents.executeJavaScript(`
       fetch('https://web.kick.com/api/v1/clips/${clipId}/finalize', {
@@ -126,7 +150,7 @@ export async function createKickClip({ kickSlug, videoId, duration, trimStart, t
           'Accept': 'application/json',
           'x-app-platform': 'web',
         },
-        body: JSON.stringify({ title: ${JSON.stringify(title)}, trim_start: ${Math.max(0, Number(trimStart) || 0)}, trim_duration: ${Math.max(1, Number(duration) || 30)} }),
+        body: JSON.stringify({ title: ${JSON.stringify(title)}, trim_start: ${trimStart}, trim_duration: ${Math.max(1, Number(duration) || 30)} }),
       }).then(async r => ({ status: r.status, text: await r.text() }))
         .catch(e => ({ status: 0, text: String(e) }))
     `);
