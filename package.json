@@ -1,6 +1,6 @@
 {
   "name": "kickpulse-desktop",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "private": true,
   "description": "KickPulse Desktop HUD — plays jumpscares and other real-time effects directly on screen, over any game, triggered by the same events that drive your OBS widgets.",
   "main": "dist-electron/main.js",
