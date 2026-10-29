@@ -576,20 +576,25 @@ export function disconnectTwitchPlatform(apiKey: string): Promise<{ ok: boolean 
   return request('/platform-accounts/disconnect', apiKey, { method: 'POST', body: JSON.stringify({ platform: 'twitch' }) });
 }
 
+// preferences/setBotIdentityPreference removed 2026-10-29 — the official
+// bot became mandatory for anyone without their own custom bot connected
+// (website repo commit 63d551d: "Make official KickPulse bot mandatory,
+// remove opt-in toggle"), which deleted `preferences` from this response
+// and removed PUT /bot-identity/preference entirely. This app's own
+// ConnectionsPage.tsx kept reading botStatus.preferences[platform]
+// unconditionally, which crashed the whole page (TypeError: Cannot read
+// properties of undefined) the moment it loaded after that — see
+// docs/history (website repo) for the full incident.
 export interface BotStatus {
   isUltimate: boolean;
   custom: { platform: string; username: string; display_name: string; needs_reauth: boolean }[];
   official: { platform: string; username: string; display_name: string; needs_reauth: boolean }[];
-  preferences: { kick: boolean; twitch: boolean };
 }
 export function getBotIdentityStatus(apiKey: string): Promise<BotStatus> {
   return request('/bot-identity/status', apiKey);
 }
 export function disconnectBotIdentity(apiKey: string, platform: 'kick' | 'twitch'): Promise<{ ok: boolean }> {
   return request('/bot-identity/disconnect', apiKey, { method: 'POST', body: JSON.stringify({ platform }) });
-}
-export function setBotIdentityPreference(apiKey: string, platform: 'kick' | 'twitch', useOfficialBot: boolean): Promise<{ ok: boolean }> {
-  return request('/bot-identity/preference', apiKey, { method: 'PUT', body: JSON.stringify({ platform, useOfficialBot }) });
 }
 
 export function getSubscriptionStatus(userId: string): Promise<{ kick: boolean; twitch: boolean }> {

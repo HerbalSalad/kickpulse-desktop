@@ -182,11 +182,6 @@ export default function ConnectionsPage({ userId }: ConnectionsPageProps) {
     setBotDisconnecting(null);
     loadBotStatus();
   };
-  const toggleOfficialBotPref = async (platform: 'kick' | 'twitch', value: boolean) => {
-    setBotStatus(prev => prev ? { ...prev, preferences: { ...prev.preferences, [platform]: value } } : prev);
-    await window.kickpulseDesktop.connections.setBotPreference(platform, value).catch(() => loadBotStatus());
-  };
-
   const subscribe = async (platform: 'kick' | 'twitch') => {
     setSubscribing(platform);
     try {
@@ -303,9 +298,10 @@ export default function ConnectionsPage({ userId }: ConnectionsPageProps) {
       {/* Bot Account */}
       <Section title="Bot Account">
         <p style={{ fontSize: 12, color: COLORS.textDim, marginBottom: 10 }}>
-          By default, your bot messages post using Kick's own bot identity (or, on Twitch, your own
-          account). Connect a separate account to have chat commands, alerts, and moderation post as
-          THAT account instead.
+          Your bot messages post using KickPulse's official bot account by default. Connect your own
+          account below to have chat commands, alerts, and replies post as THAT account instead. Either
+          way, it can post without being a moderator as long as your chat has no restrictions
+          (followers-only, account-age, etc) blocking it — modding it in your channel is what fixes those.
         </p>
         {(['kick', 'twitch'] as const).map(platform => {
           const custom = botStatus?.custom.find(b => b.platform === platform);
@@ -344,19 +340,10 @@ export default function ConnectionsPage({ userId }: ConnectionsPageProps) {
               {official && !custom && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: `1px solid ${COLORS.border}` }}>
                   <div>
-                    <div style={{ fontSize: 12, color: COLORS.text }}>Use KickPulse's official bot (@{official.username})</div>
+                    <div style={{ fontSize: 12, color: COLORS.text }}>Using KickPulse's official bot (@{official.username})</div>
                     <div style={{ fontSize: 11, color: COLORS.textFaint }}>No setup needed unless your chat has follower/sub-only restrictions.</div>
                   </div>
-                  <button onClick={() => toggleOfficialBotPref(platform, !botStatus?.preferences[platform])}
-                    style={{
-                      position: 'relative', width: 40, height: 22, borderRadius: 999, border: 'none', cursor: 'pointer', flexShrink: 0,
-                      background: botStatus?.preferences[platform] ? '#38bdf8' : COLORS.border,
-                    }}>
-                    <span style={{
-                      position: 'absolute', top: 2, left: botStatus?.preferences[platform] ? 20 : 2,
-                      width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.15s',
-                    }} />
-                  </button>
+                  <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, color: '#38bdf8', background: '#38bdf822', padding: '4px 10px', borderRadius: 999 }}>Active</span>
                 </div>
               )}
             </div>

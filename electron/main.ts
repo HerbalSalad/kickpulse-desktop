@@ -40,7 +40,7 @@ import {
   getViewerFlags, addViewerFlag, removeViewerFlag, getBanSquads, createBanSquad, joinBanSquad, leaveBanSquad,
   getYoutubeStatus, connectYoutube, connectYoutubeSecondary, disconnectYoutube, disconnectYoutubeSecondary,
   getTiktokStatus, connectTiktok, disconnectTiktok, disconnectTwitchPlatform,
-  getBotIdentityStatus, disconnectBotIdentity, setBotIdentityPreference,
+  getBotIdentityStatus, disconnectBotIdentity,
   getSubscriptionStatus, subscribeEvents,
   getDiscordSettings, saveDiscordSettings, testDiscordWebhook, deleteAccount,
 } from './api';
@@ -1225,8 +1225,6 @@ app.whenReady().then(async () => {
     }
   });
   ipcMain.handle('connections:bot-disconnect', (_e, platform: 'kick' | 'twitch') => disconnectBotIdentity(requireApiKey(), platform));
-  ipcMain.handle('connections:bot-set-preference', (_e, platform: 'kick' | 'twitch', useOfficialBot: boolean) =>
-    setBotIdentityPreference(requireApiKey(), platform, useOfficialBot));
 
   ipcMain.handle('connections:subscription-status', () => {
     const me = currentStatus.me;

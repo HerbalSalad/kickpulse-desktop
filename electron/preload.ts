@@ -380,8 +380,6 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
     getBotStatus: (): Promise<BotStatus> => ipcRenderer.invoke('connections:bot-status'),
     connectBot: (platform: 'kick' | 'twitch'): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('connections:bot-connect', platform),
     disconnectBot: (platform: 'kick' | 'twitch'): Promise<{ ok: boolean }> => ipcRenderer.invoke('connections:bot-disconnect', platform),
-    setBotPreference: (platform: 'kick' | 'twitch', useOfficialBot: boolean): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke('connections:bot-set-preference', platform, useOfficialBot),
 
     getSubscriptionStatus: (): Promise<{ kick: boolean; twitch: boolean }> => ipcRenderer.invoke('connections:subscription-status'),
     subscribeEvents: (platform: 'kick' | 'twitch'): Promise<{ success: boolean }> => ipcRenderer.invoke('connections:subscribe-events', platform),
