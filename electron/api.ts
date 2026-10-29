@@ -597,6 +597,21 @@ export function disconnectBotIdentity(apiKey: string, platform: 'kick' | 'twitch
   return request('/bot-identity/disconnect', apiKey, { method: 'POST', body: JSON.stringify({ platform }) });
 }
 
+// !clip / kick_clip_create settings (2026-10-29) — same /clip-settings
+// route the website's own ClipSettings.tsx calls, see routes/clipSettings.js.
+export interface ClipSettings {
+  permission: 'everyone' | 'subscriber' | 'vip' | 'moderator' | 'broadcaster';
+  onRequestMessage: string;
+  onSuccessMessage: string;
+  onFailureMessage: string;
+}
+export function getClipSettings(apiKey: string): Promise<ClipSettings> {
+  return request('/clip-settings', apiKey);
+}
+export function setClipSettings(apiKey: string, settings: ClipSettings): Promise<ClipSettings> {
+  return request('/clip-settings', apiKey, { method: 'PUT', body: JSON.stringify(settings) });
+}
+
 export function getSubscriptionStatus(userId: string): Promise<{ kick: boolean; twitch: boolean }> {
   return fetch(`${BASE_URL}/subscription-status?userId=${encodeURIComponent(userId)}`)
     .then(r => r.ok ? r.json() as Promise<{ kick: boolean; twitch: boolean }> : { kick: false, twitch: false })

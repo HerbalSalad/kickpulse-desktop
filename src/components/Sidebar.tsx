@@ -8,7 +8,7 @@
 // require switching to the Home tab to check.
 import {
   LayoutDashboard, Blocks, LayoutTemplate, Sparkles, Clapperboard, Zap, Shapes,
-  Video, Monitor, FolderOpen, Plug, MessageSquare, Bell, ShieldCheck, Sun, Flame, Mic, Settings, ShieldAlert, Link2, Pencil, type LucideIcon,
+  Video, Monitor, FolderOpen, Plug, MessageSquare, Bell, ShieldCheck, Sun, Flame, Mic, Settings, ShieldAlert, Link2, Pencil, Scissors, type LucideIcon,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -42,6 +42,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'Chat',
     items: [
       { id: 'chatbot', label: 'Chat Bot', icon: MessageSquare },
+      { id: 'clip-settings', label: 'Clip Settings', icon: Scissors },
       { id: 'stream-info', label: 'Stream Info', icon: Pencil },
       // Moved here from 'Create' (2026-10-21) — Commands/Keywords can now
       // carry the same rich Actions a Pulse Engine rule can, so the two

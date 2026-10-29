@@ -41,6 +41,7 @@ import {
   getYoutubeStatus, connectYoutube, connectYoutubeSecondary, disconnectYoutube, disconnectYoutubeSecondary,
   getTiktokStatus, connectTiktok, disconnectTiktok, disconnectTwitchPlatform,
   getBotIdentityStatus, disconnectBotIdentity,
+  getClipSettings, setClipSettings,
   getSubscriptionStatus, subscribeEvents,
   getDiscordSettings, saveDiscordSettings, testDiscordWebhook, deleteAccount,
 } from './api';
@@ -1218,6 +1219,11 @@ app.whenReady().then(async () => {
   // purely local Electron session state. See kickWebLogin.ts's own header.
   ipcMain.handle('connections:kick-web-session-status', () => getKickWebSessionStatus());
   ipcMain.handle('connections:kick-web-login', () => openKickWebLogin());
+
+  // !clip / kick_clip_create settings (2026-10-29) — same route the
+  // website's ClipSettings.tsx calls.
+  ipcMain.handle('clip-settings:get', () => getClipSettings(requireApiKey()));
+  ipcMain.handle('clip-settings:set', (_e, settings) => setClipSettings(requireApiKey(), settings));
 
   ipcMain.handle('connections:bot-status', () => getBotIdentityStatus(requireApiKey()));
   ipcMain.handle('connections:bot-connect', async (_e, platform: 'kick' | 'twitch') => {

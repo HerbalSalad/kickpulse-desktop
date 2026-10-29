@@ -32,7 +32,7 @@ import type {
   UpdaterStatus,
 } from './types';
 import type { ChatFeedMessage, EventFeedItem } from './chat-feed';
-import type { YoutubeStatus, TiktokStatus, BotStatus, DiscordSettings } from './api';
+import type { YoutubeStatus, TiktokStatus, BotStatus, DiscordSettings, ClipSettings } from './api';
 import type { DisplayOption } from './overlay-window';
 import type { DiscoveredBridge, HueLightInfo, PairResult } from './lights/hue';
 import type { WledDiscoveryResult } from './lights/wled';
@@ -386,6 +386,14 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
 
     getSubscriptionStatus: (): Promise<{ kick: boolean; twitch: boolean }> => ipcRenderer.invoke('connections:subscription-status'),
     subscribeEvents: (platform: 'kick' | 'twitch'): Promise<{ success: boolean }> => ipcRenderer.invoke('connections:subscribe-events', platform),
+  },
+
+  // !clip / kick_clip_create settings (2026-10-29) — who can use the chat
+  // command and what the bot replies. Same /clip-settings route the
+  // website's own ClipSettings.tsx calls.
+  clipSettings: {
+    get: (): Promise<ClipSettings> => ipcRenderer.invoke('clip-settings:get'),
+    set: (settings: ClipSettings): Promise<ClipSettings> => ipcRenderer.invoke('clip-settings:set', settings),
   },
 
   // Settings (2026-10-22, native rebuild) — Discord live notification and

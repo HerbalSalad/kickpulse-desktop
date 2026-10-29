@@ -20,6 +20,7 @@ import WidgetStudioPage from './pages/WidgetStudioPage';
 import ScenesPage from './pages/ScenesPage';
 import PulseEnginePage from './pages/PulseEnginePage';
 import ChatBotPage from './pages/ChatBotPage';
+import ClipSettingsPage from './pages/ClipSettingsPage';
 import StreamInfoPage from './pages/StreamInfoPage';
 import ChatAlertsPage from './pages/ChatAlertsPage';
 import ModerationPage from './pages/ModerationPage';
@@ -98,6 +99,11 @@ export default function App() {
         {active === 'chatbot' && (
           me ? <ChatBotPage /> : (
             <ComingSoonPage title="Chat Bot" body="Connect your account on the Settings tab first." />
+          )
+        )}
+        {active === 'clip-settings' && (
+          me ? <ClipSettingsPage /> : (
+            <ComingSoonPage title="Clip Settings" body="Connect your account on the Settings tab first." />
           )
         )}
         {active === 'stream-info' && (

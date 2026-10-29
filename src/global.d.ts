@@ -532,6 +532,23 @@ declare global {
         subscribeEvents: (platform: 'kick' | 'twitch') => Promise<{ success: boolean }>;
       };
 
+      // !clip / kick_clip_create settings (2026-10-29) — who can use the
+      // chat command and what the bot replies.
+      clipSettings: {
+        get: () => Promise<{
+          permission: 'everyone' | 'subscriber' | 'vip' | 'moderator' | 'broadcaster';
+          onRequestMessage: string;
+          onSuccessMessage: string;
+          onFailureMessage: string;
+        }>;
+        set: (settings: {
+          permission: 'everyone' | 'subscriber' | 'vip' | 'moderator' | 'broadcaster';
+          onRequestMessage: string;
+          onSuccessMessage: string;
+          onFailureMessage: string;
+        }) => Promise<any>;
+      };
+
       // Settings (2026-10-22, native rebuild) — API key management stays a
       // website link, see electron/api.ts's own comment on why.
       settings: {
