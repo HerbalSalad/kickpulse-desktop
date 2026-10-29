@@ -377,6 +377,9 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
     connectTiktok: (username: string): Promise<any> => ipcRenderer.invoke('connections:tiktok-connect', username),
     disconnectTiktok: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('connections:tiktok-disconnect'),
 
+    getKickWebSessionStatus: (): Promise<{ loggedIn: boolean }> => ipcRenderer.invoke('connections:kick-web-session-status'),
+    openKickWebLogin: (): Promise<{ loggedIn: boolean }> => ipcRenderer.invoke('connections:kick-web-login'),
+
     getBotStatus: (): Promise<BotStatus> => ipcRenderer.invoke('connections:bot-status'),
     connectBot: (platform: 'kick' | 'twitch'): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('connections:bot-connect', platform),
     disconnectBot: (platform: 'kick' | 'twitch'): Promise<{ ok: boolean }> => ipcRenderer.invoke('connections:bot-disconnect', platform),

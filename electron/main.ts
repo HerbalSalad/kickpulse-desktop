@@ -52,6 +52,7 @@ import * as lightScenes from './light-scenes';
 import * as lightReactions from './light-reactions';
 import { createKickClip } from './kick-clip';
 import { postClipResult } from './clip-result-report';
+import { getKickWebSessionStatus, openKickWebLogin } from './kickWebLogin';
 import {
   startVoiceListening, stopVoiceListening, setVoiceInputDevice, isVoiceListening, registerVoiceIpc,
 } from './voice-window';
@@ -1212,6 +1213,11 @@ app.whenReady().then(async () => {
   ipcMain.handle('connections:tiktok-status', () => getTiktokStatus(requireApiKey()));
   ipcMain.handle('connections:tiktok-connect', (_e, username: string) => connectTiktok(requireApiKey(), username));
   ipcMain.handle('connections:tiktok-disconnect', () => disconnectTiktok(requireApiKey()));
+
+  // Kick web session for Clips (2026-10-29) — no API key involved at all,
+  // purely local Electron session state. See kickWebLogin.ts's own header.
+  ipcMain.handle('connections:kick-web-session-status', () => getKickWebSessionStatus());
+  ipcMain.handle('connections:kick-web-login', () => openKickWebLogin());
 
   ipcMain.handle('connections:bot-status', () => getBotIdentityStatus(requireApiKey()));
   ipcMain.handle('connections:bot-connect', async (_e, platform: 'kick' | 'twitch') => {

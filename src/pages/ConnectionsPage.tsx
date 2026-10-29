@@ -16,7 +16,7 @@
 // real OAuth window via electron/oauth-login.ts, same as the Home tab's own
 // "Login with Kick/Twitch" already does — never a webview.
 import { useState, useEffect, useCallback } from 'react';
-import { Link2, Zap, RefreshCw, Bot, Lock, Crown } from 'lucide-react';
+import { Link2, Zap, RefreshCw, Bot, Lock, Crown, Clapperboard } from 'lucide-react';
 import { Page, Section, Button, COLORS } from '../components/ui';
 
 interface ConnectionsPageProps {
@@ -34,6 +34,23 @@ export default function ConnectionsPage({ userId }: ConnectionsPageProps) {
 
   const loadStatus = useCallback(() => { window.kickpulseDesktop.getStatus().then(setStatus); }, []);
   useEffect(() => { loadStatus(); window.kickpulseDesktop.onStatus(setStatus); }, [loadStatus]);
+
+  // Kick web session for Clips (2026-10-29) — separate from the OAuth link
+  // above; see electron/kickWebLogin.ts's header for why this needs its
+  // own dedicated, discoverable affordance instead of "disconnect then
+  // reconnect Kick."
+  const [kickWebSession, setKickWebSession] = useState<{ loggedIn: boolean } | null>(null);
+  const [kickWebLoggingIn, setKickWebLoggingIn] = useState(false);
+  const loadKickWebSession = useCallback(() => {
+    window.kickpulseDesktop.connections.getKickWebSessionStatus().then(setKickWebSession).catch(() => {});
+  }, []);
+  useEffect(() => { loadKickWebSession(); }, [loadKickWebSession]);
+  const openKickWebLogin = async () => {
+    setKickWebLoggingIn(true);
+    const result = await window.kickpulseDesktop.connections.openKickWebLogin().catch(() => null);
+    setKickWebLoggingIn(false);
+    if (result) setKickWebSession(result);
+  };
 
   const [youtubeInfo, setYoutubeInfo] = useState<Awaited<ReturnType<typeof window.kickpulseDesktop.connections.getYoutubeStatus>> | null>(null);
   const [ytHandleInput, setYtHandleInput] = useState('');
@@ -290,6 +307,43 @@ export default function ConnectionsPage({ userId }: ConnectionsPageProps) {
               <Button onClick={connectTiktok} disabled={connectingTiktok || !tiktokHandleInput.trim()}>
                 {connectingTiktok ? 'Connecting…' : 'Connect →'}
               </Button>
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* Kick Clips — separate from the Kick connection above on purpose:
+          !clip/the Create Kick Clip Pulse Engine action need a real,
+          logged-in kick.com browser session in THIS app, which the Kick
+          OAuth connection above does not by itself guarantee (it's a
+          different credential — see electron/kickWebLogin.ts). */}
+      <Section title="Kick Clips">
+        <div style={rowBox}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: COLORS.panel, border: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Clapperboard size={14} color={KICK_COLOR} />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>Log in to Kick for Clips</div>
+                <div style={{ fontSize: 11, color: COLORS.textFaint }}>
+                  Needed for !clip and the Create Kick Clip Pulse Engine action — separate from your Kick connection above.
+                </div>
+              </div>
+            </div>
+            {kickWebSession?.loggedIn ? (
+              <span style={connectedPill(KICK_COLOR)}>Ready ✓</span>
+            ) : (
+              <Button variant="primary" onClick={openKickWebLogin} disabled={kickWebLoggingIn}>
+                {kickWebLoggingIn ? 'Opening…' : 'Log in →'}
+              </Button>
+            )}
+          </div>
+          {kickWebSession?.loggedIn && (
+            <div style={{ marginTop: 8 }}>
+              <button onClick={openKickWebLogin} disabled={kickWebLoggingIn} style={{ ...linkBtn, fontSize: 11, color: COLORS.textFaint }}>
+                {kickWebLoggingIn ? 'Opening…' : 'Not working, or switched accounts? Log in again →'}
+              </button>
             </div>
           )}
         </div>

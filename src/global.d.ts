@@ -512,15 +512,21 @@ declare global {
         connectTiktok: (username: string) => Promise<{ ok: boolean; username: string }>;
         disconnectTiktok: () => Promise<{ ok: boolean }>;
 
+        // preferences/setBotPreference removed 2026-10-29 — see api.ts's own
+        // comment on BotStatus for why (the official bot became mandatory;
+        // this type had drifted out of sync with preload.ts's real runtime
+        // object, which no longer has setBotPreference at all).
         getBotStatus: () => Promise<{
           isUltimate: boolean;
           custom: { platform: string; username: string; display_name: string; needs_reauth: boolean }[];
           official: { platform: string; username: string; display_name: string; needs_reauth: boolean }[];
-          preferences: { kick: boolean; twitch: boolean };
         }>;
         connectBot: (platform: 'kick' | 'twitch') => Promise<{ ok: boolean; error?: string }>;
         disconnectBot: (platform: 'kick' | 'twitch') => Promise<{ ok: boolean }>;
-        setBotPreference: (platform: 'kick' | 'twitch', useOfficialBot: boolean) => Promise<{ ok: boolean }>;
+
+        // Kick web session for Clips (2026-10-29) — see electron/kickWebLogin.ts.
+        getKickWebSessionStatus: () => Promise<{ loggedIn: boolean }>;
+        openKickWebLogin: () => Promise<{ loggedIn: boolean }>;
 
         getSubscriptionStatus: () => Promise<{ kick: boolean; twitch: boolean }>;
         subscribeEvents: (platform: 'kick' | 'twitch') => Promise<{ success: boolean }>;

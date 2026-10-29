@@ -14,13 +14,67 @@
 // thumbnail convention existed, or never opened+saved since, simply has
 // none yet — shown as a plain placeholder, same as the website's own list
 // pages already do, not an error.
-import { ImageOff, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ImageOff, Plus, Trash2, MoreVertical } from 'lucide-react';
 import { Section, Button, IconButton, EmptyState, COLORS, CHECKER_BG } from './ui';
 
 export interface ConfigCardItem {
   id: string;
   name: string;
   thumbnail?: string | null;
+}
+
+// Real incident, 2026-10-29 — a Trash2 IconButton sat directly in the card
+// footer, right where the website's own list pages (Overlays.tsx's
+// OverlayMenu) put a plain "Edit" affordance instead: a user clicked
+// Delete on instinct going for Edit. Fixed to match the website's own
+// established safety pattern exactly — delete lives behind a kebab (⋮)
+// menu (two deliberate clicks, not one) with a real confirm() on top,
+// rather than a single always-visible destructive button in the one spot
+// a user's cursor naturally lands after reading the card's title.
+function CardMenu({ name, onDelete }: { name: string; onDelete: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+      <IconButton title="More options" onClick={(e) => { e.stopPropagation(); setOpen(p => !p); }}>
+        <MoreVertical size={13} />
+      </IconButton>
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute', bottom: '100%', right: 0, marginBottom: 4, width: 150,
+            background: '#15151c', border: `1px solid ${COLORS.border}`, borderRadius: 10,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 20, overflow: 'hidden',
+          }}
+        >
+          <button
+            onClick={() => {
+              setOpen(false);
+              if (window.confirm(`Delete "${name}"? This can't be undone, and any OBS source pointed at it will stop working.`)) onDelete();
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 12px',
+              border: 'none', background: 'transparent', color: '#fca5a5', fontSize: 12.5, cursor: 'pointer',
+            }}
+          >
+            <Trash2 size={13} /> Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ConfigCard({ item, onOpen, onDelete }: {
@@ -48,7 +102,7 @@ export function ConfigCard({ item, onOpen, onDelete }: {
       </div>
       <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
-        <IconButton title="Delete" danger onClick={(e) => { e.stopPropagation(); onDelete(); }}><Trash2 size={13} /></IconButton>
+        <CardMenu name={item.name} onDelete={onDelete} />
       </div>
     </div>
   );
