@@ -504,15 +504,15 @@ function handleWsMessage(msg: any): void {
 
     // clip.create — a !clip chat command (server.js, Kick-only, desktop-only
     // gated) asking this app to actually create a real Kick clip. See
-    // kick-clip.ts's own header for the full mechanism (contract AND
-    // trim_start confirmed live 2026-10-29). Fire-and-forget from this
-    // handler's own perspective — createKickClip() does the real work
-    // async and postClipResult() reports back whenever it resolves,
-    // however long that takes.
+    // kick-clip.ts's own header for the full mechanism and what's still
+    // unresolved about trim_start. Fire-and-forget from this handler's own
+    // perspective — createKickClip() does the real work async and
+    // postClipResult() reports back whenever it resolves, however long
+    // that takes.
     if (msg.event === 'clip.create' && msg.payload?.requestId) {
-      const { requestId, kickSlug, videoId, duration, trimStart, title } = msg.payload;
+      const { requestId, kickSlug, videoId, duration, trimStart, title, debug } = msg.payload;
       const apiKey = loadConfig().apiKey;
-      createKickClip({ kickSlug, videoId, duration: Number(duration) || 30, trimStart: Number(trimStart) || 0, title: title || 'Clip' })
+      createKickClip({ kickSlug, videoId, duration: Number(duration) || 30, trimStart: Number(trimStart) || 0, title: title || 'Clip', debug: !!debug })
         .then((result) => { if (apiKey) return postClipResult(apiKey, requestId, result); })
         .catch((e) => {
           console.error('[clip] createKickClip threw', e);

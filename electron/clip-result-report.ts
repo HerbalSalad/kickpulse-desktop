@@ -6,7 +6,7 @@ const BASE_URL = process.env.KICKPULSE_API_BASE || 'https://www.kickpulsebot.com
 export async function postClipResult(
   apiKey: string,
   requestId: string,
-  result: { ok: boolean; clipUrl?: string; error?: string },
+  result: { ok: boolean; clipUrl?: string; error?: string; debugInfo?: string },
 ): Promise<void> {
   try {
     await fetch(`${BASE_URL}/clips/desktop-result`, {

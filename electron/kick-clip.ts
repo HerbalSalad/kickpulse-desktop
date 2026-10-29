@@ -21,13 +21,17 @@
 // itself (the old version's kick.com/api/v2/channels/{slug} lookup is gone,
 // dead weight now that video_id comes in directly).
 //
-// trim_start, confirmed live 2026-10-29 via a real !clip test: it's NOT
-// "near now" — it's an offset from the START of video_id's own recording
-// (the whole broadcast-in-progress). trim_start: 0 on an 8-minute-old
-// stream grabbed the very first seconds, not anything recent. Also
-// resolved server-side now (lib/kickClipAction.js computes it from the
-// same livestream lookup's started_at) and arrives pre-computed in
-// CreateClipParams — this file just uses whatever it's given.
+// trim_start — still genuinely unresolved, see lib/kickClipAction.js's own
+// header (website repo) for the full story: a first theory ("offset from
+// absolute broadcast start," computed from elapsed time since go-live) was
+// tried and reverted the same day after it made finalize return a real
+// HTTP 500 instead of succeeding — Kick's backend doesn't gracefully clamp
+// an out-of-range trim_start, it falls over. Back to the one value proven
+// to never error: 0 (still not confirmed to mean "now" — two real reports
+// describe different offsets-from-now with it). `debug` below exists
+// specifically to stop guessing a third formula: it surfaces Kick's own
+// real create-response body (which almost certainly carries the actual
+// window length) back through the chat reply on the next test.
 //
 // Why this has to run in a real BrowserWindow at all (not Node's own
 // fetch): Kick's own clip API sits behind Cloudflare Bot Management, which
@@ -44,6 +48,7 @@ export interface CreateClipResult {
   ok: boolean;
   clipUrl?: string;
   error?: string;
+  debugInfo?: string;
 }
 
 export interface CreateClipParams {
@@ -52,11 +57,12 @@ export interface CreateClipParams {
   duration: number;   // seconds, already clamped 10-60 by the server
   trimStart: number;  // seconds into video_id's own recording — resolved server-side, see header
   title: string;
+  debug?: boolean;    // opt-in (!clip ... debug) — see header comment
 }
 
 const PAGE_TIMEOUT_MS = 20_000;
 
-export async function createKickClip({ kickSlug, videoId, duration, trimStart, title }: CreateClipParams): Promise<CreateClipResult> {
+export async function createKickClip({ kickSlug, videoId, duration, trimStart, title, debug }: CreateClipParams): Promise<CreateClipResult> {
   // Visible, not headless — deliberate while this is freshly-verified:
   // Kick's own login/captcha/consent UI (if the session has gone stale)
   // should be seeable and clickable by whoever's at the machine, not
@@ -106,6 +112,10 @@ export async function createKickClip({ kickSlug, videoId, duration, trimStart, t
       return { ok: false, error: `create response had no clip_* id: ${createResult.text.slice(0, 300)}` };
     }
     const clipId = clipIdMatch[0];
+    // debug: carry Kick's own real create-response body through to the
+    // chat reply regardless of outcome — it's the actual fix for trim_start
+    // once we see it, not something to leave sitting in a discarded variable.
+    const debugInfo = debug ? `create response: ${createResult.text.slice(0, 400)}` : undefined;
 
     const finalizeResult = await win.webContents.executeJavaScript(`
       fetch('https://web.kick.com/api/v1/clips/${clipId}/finalize', {
@@ -121,10 +131,10 @@ export async function createKickClip({ kickSlug, videoId, duration, trimStart, t
         .catch(e => ({ status: 0, text: String(e) }))
     `);
     if (finalizeResult.status < 200 || finalizeResult.status >= 300) {
-      return { ok: false, error: `finalize failed (HTTP ${finalizeResult.status}): ${finalizeResult.text.slice(0, 300)}` };
+      return { ok: false, error: `finalize failed (HTTP ${finalizeResult.status}): ${finalizeResult.text.slice(0, 300)}`, debugInfo };
     }
 
-    return { ok: true, clipUrl: `https://kick.com/${kickSlug}?clip=${clipId}` };
+    return { ok: true, clipUrl: `https://kick.com/${kickSlug}?clip=${clipId}`, debugInfo };
   } catch (e: any) {
     return { ok: false, error: e?.message || String(e) };
   } finally {
