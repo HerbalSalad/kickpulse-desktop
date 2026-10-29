@@ -21,11 +21,13 @@
 // itself (the old version's kick.com/api/v2/channels/{slug} lookup is gone,
 // dead weight now that video_id comes in directly).
 //
-// Still unconfirmed: trim_start/trim_duration semantics — we know the
-// shape, not which end of Kick's raw extracted window trim_start: 0
-// actually is (grabs "just now," or something from a few minutes back).
-// Defaults to 0 as a placeholder. The real test is one live !clip run,
-// checking what the resulting clip actually shows — not more digging.
+// trim_start, confirmed live 2026-10-29 via a real !clip test: it's NOT
+// "near now" — it's an offset from the START of video_id's own recording
+// (the whole broadcast-in-progress). trim_start: 0 on an 8-minute-old
+// stream grabbed the very first seconds, not anything recent. Also
+// resolved server-side now (lib/kickClipAction.js computes it from the
+// same livestream lookup's started_at) and arrives pre-computed in
+// CreateClipParams — this file just uses whatever it's given.
 //
 // Why this has to run in a real BrowserWindow at all (not Node's own
 // fetch): Kick's own clip API sits behind Cloudflare Bot Management, which
@@ -45,15 +47,16 @@ export interface CreateClipResult {
 }
 
 export interface CreateClipParams {
-  kickSlug: string;  // only used to load a real page and build the final clipUrl
-  videoId: string;   // resolved server-side — see header
-  duration: number;  // seconds, already clamped 10-60 by the server
+  kickSlug: string;   // only used to load a real page and build the final clipUrl
+  videoId: string;    // resolved server-side — see header
+  duration: number;   // seconds, already clamped 10-60 by the server
+  trimStart: number;  // seconds into video_id's own recording — resolved server-side, see header
   title: string;
 }
 
 const PAGE_TIMEOUT_MS = 20_000;
 
-export async function createKickClip({ kickSlug, videoId, duration, title }: CreateClipParams): Promise<CreateClipResult> {
+export async function createKickClip({ kickSlug, videoId, duration, trimStart, title }: CreateClipParams): Promise<CreateClipResult> {
   // Visible, not headless — deliberate while this is freshly-verified:
   // Kick's own login/captcha/consent UI (if the session has gone stale)
   // should be seeable and clickable by whoever's at the machine, not
@@ -113,8 +116,7 @@ export async function createKickClip({ kickSlug, videoId, duration, title }: Cre
           'Accept': 'application/json',
           'x-app-platform': 'web',
         },
-        // trim_start: 0 is an unverified placeholder — see this file's header.
-        body: JSON.stringify({ title: ${JSON.stringify(title)}, trim_start: 0, trim_duration: ${Math.max(1, Number(duration) || 30)} }),
+        body: JSON.stringify({ title: ${JSON.stringify(title)}, trim_start: ${Math.max(0, Number(trimStart) || 0)}, trim_duration: ${Math.max(1, Number(duration) || 30)} }),
       }).then(async r => ({ status: r.status, text: await r.text() }))
         .catch(e => ({ status: 0, text: String(e) }))
     `);
