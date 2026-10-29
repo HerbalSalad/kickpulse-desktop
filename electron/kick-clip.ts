@@ -1,6 +1,15 @@
 // electron/kick-clip.ts — real Kick clip creation, the `clip.create` WS
 // event's actual handler.
 //
+// CONFIRMED WORKING END-TO-END 2026-10-29 — two independent live tests
+// (timer on screen at the time of the command vs. the resulting clip's own
+// start) landed within single-digit seconds of "now," consistent with
+// ordinary live-stream viewer delay, not a real offset bug. Full
+// investigation write-up, including the two wrong trim_start guesses tried
+// first: docs/history/kick-native-clip-creation.md (website repo). Direct
+// instruction after confirming this: "lets not fuck with it" — don't
+// re-open this investigation without a genuinely new, real complaint.
+//
 // CONTRACT CONFIRMED LIVE 2026-10-29 — previously an unverified guess from
 // just Kick's frontend bundle's route names (channel_id + an "initiate
 // starts capturing, finalize stops it" wait-then-finalize model). That
