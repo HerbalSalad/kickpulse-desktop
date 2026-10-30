@@ -30,11 +30,15 @@ interface Rule {
   actions: PulseAction[];
   cooldown_seconds: number;
   user_cooldown_seconds: number;
+  // 2026-10-30 — optional (not required on TEMPLATES' own Omit<Rule,'id'>
+  // entries, none of which set these) rather than `| null` everywhere.
+  category?: string | null;
+  color?: string | null;
 }
 
 interface Draft {
   name: string; enabled: boolean; cooldown_seconds: number; user_cooldown_seconds: number;
-  trigger: Trigger; actions: PulseAction[];
+  trigger: Trigger; actions: PulseAction[]; category: string; color: string;
 }
 
 interface RunningJob {
@@ -163,8 +167,8 @@ export default function PulseEnginePage() {
   const newDraft = (tpl?: Omit<Rule, 'id'>) => {
     setEditingId(null);
     setDraft(tpl
-      ? { name: tpl.name, enabled: tpl.enabled, cooldown_seconds: tpl.cooldown_seconds, user_cooldown_seconds: tpl.user_cooldown_seconds, trigger: { ...tpl.trigger }, actions: tpl.actions.map(a => ({ ...a })) }
-      : { name: '', enabled: true, cooldown_seconds: 0, user_cooldown_seconds: 0, trigger: { type: 'event', event: 'channel.followed' }, actions: [{ type: 'bot_message', message: '' }] });
+      ? { name: tpl.name, enabled: tpl.enabled, cooldown_seconds: tpl.cooldown_seconds, user_cooldown_seconds: tpl.user_cooldown_seconds, trigger: { ...tpl.trigger }, actions: tpl.actions.map(a => ({ ...a })), category: '', color: '' }
+      : { name: '', enabled: true, cooldown_seconds: 0, user_cooldown_seconds: 0, trigger: { type: 'event', event: 'channel.followed' }, actions: [{ type: 'bot_message', message: '' }], category: '', color: '' });
   };
 
   const startEdit = (rule: Rule) => {
@@ -174,6 +178,7 @@ export default function PulseEnginePage() {
       user_cooldown_seconds: rule.user_cooldown_seconds,
       trigger: { ...rule.trigger },
       actions: JSON.parse(JSON.stringify(rule.actions)),
+      category: rule.category || '', color: rule.color || '',
     });
     setExpandedId(null);
   };
@@ -189,6 +194,7 @@ export default function PulseEnginePage() {
         name: draft.name, enabled: draft.enabled, cooldown_seconds: draft.cooldown_seconds,
         user_cooldown_seconds: draft.user_cooldown_seconds,
         trigger: draft.trigger, actions: draft.actions,
+        category: draft.category.trim() || null, color: draft.color || null,
       };
       if (editingId) await window.kickpulseDesktop.pulseRules.update(editingId, body);
       else await window.kickpulseDesktop.pulseRules.create(body);
@@ -288,7 +294,19 @@ export default function PulseEnginePage() {
               <Pencil size={12} /> Editing an existing rule
             </div>
           )}
-          <TextInput value={draft.name} onChange={(v) => setDraft((d) => d && { ...d, name: v })} placeholder="Rule name" style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <TextInput value={draft.name} onChange={(v) => setDraft((d) => d && { ...d, name: v })} placeholder="Rule name" style={{ fontSize: 15, fontWeight: 600, flex: 1 }} />
+            <input type="color" value={draft.color ? `#${draft.color}` : '#6d28d9'}
+              onChange={(e) => setDraft((d) => d && { ...d, color: e.target.value.replace(/^#/, '') })}
+              title="Rule color"
+              style={{ width: 36, height: 36, borderRadius: 8, background: 'transparent', border: `1px solid ${COLORS.border}`, cursor: 'pointer', flexShrink: 0 }} />
+            {draft.color && (
+              <button onClick={() => setDraft((d) => d && { ...d, color: '' })}
+                style={{ fontSize: 11, color: COLORS.textFaint, background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>Clear</button>
+            )}
+          </div>
+          <TextInput value={draft.category} onChange={(v) => setDraft((d) => d && { ...d, category: v })}
+            placeholder="Category (optional) — e.g. Hype, Mod Tools" style={{ marginBottom: 12 }} />
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, marginBottom: 12 }}>
             <Row label="Global Cooldown" hint="shared across everyone">
@@ -313,14 +331,24 @@ export default function PulseEnginePage() {
         </Section>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {rules.length === 0 && !draft && (
-          <p style={{ color: COLORS.textFaint, fontSize: 13, padding: '40px 0', textAlign: 'center' }}>
-            No rules yet. Try a template above — the "big kicks" one takes 10 seconds to set up.
-          </p>
-        )}
-        {rules.map((rule) => (
-          <div key={rule.id} style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 12, opacity: rule.enabled ? 1 : 0.6 }}>
+      {(() => {
+        const hasAnyCategory = rules.some((r) => r.category);
+        const groups: Record<string, Rule[]> = {};
+        for (const rule of rules) {
+          const key = hasAnyCategory ? (rule.category || 'Uncategorized') : '';
+          (groups[key] ||= []).push(rule);
+        }
+        const groupKeys = Object.keys(groups).sort((a, b) => {
+          if (a === 'Uncategorized') return 1;
+          if (b === 'Uncategorized') return -1;
+          return a.localeCompare(b);
+        });
+
+        const RuleCard = (rule: Rule) => (
+          <div key={rule.id} style={{
+            background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 12, opacity: rule.enabled ? 1 : 0.6,
+            ...(rule.color ? { borderLeftColor: `#${rule.color}`, borderLeftWidth: 4 } : {}),
+          }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px' }}>
               <button onClick={() => toggleRule(rule)} style={{
                 position: 'relative', width: 40, height: 22, borderRadius: 999, flexShrink: 0, border: 'none', cursor: 'pointer',
@@ -353,8 +381,26 @@ export default function PulseEnginePage() {
               </div>
             )}
           </div>
-        ))}
-      </div>
+        );
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {rules.length === 0 && !draft && (
+              <p style={{ color: COLORS.textFaint, fontSize: 13, padding: '40px 0', textAlign: 'center' }}>
+                No rules yet. Try a template above — the "big kicks" one takes 10 seconds to set up.
+              </p>
+            )}
+            {groupKeys.map((key) => (
+              <div key={key || 'all'} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {hasAnyCategory && (
+                  <h3 style={{ fontSize: 11, fontWeight: 700, color: COLORS.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 0 2px' }}>{key}</h3>
+                )}
+                {groups[key].map(RuleCard)}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </Page>
   );
 }
