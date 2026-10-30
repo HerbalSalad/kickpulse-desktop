@@ -5,6 +5,7 @@ import { loadConfig, saveConfig } from './store';
 import * as wled from './lights/wled';
 import * as hue from './lights/hue';
 import * as govee from './lights/govee';
+import * as elgato from './lights/elgato';
 import type { LightDeviceConfig, LightState } from './types';
 
 function uid(): string {
@@ -38,6 +39,14 @@ export async function listLiveStates(): Promise<LightState[]> {
       // state through this app still genuinely works, this only affects
       // what the Lights page shows BEFORE you've touched it this session.
       return { id: d.id, provider: 'govee', name: d.name, reachable: !!d.ip, on: false, brightness: 100, color: 'ffffff' };
+    }
+    if (d.provider === 'elgato') {
+      // Unlike Govee above, Elgato's own /elgato/lights GET genuinely does
+      // report real current on/brightness (see lights/elgato.ts) — color
+      // is always a neutral placeholder since these are white-only panel
+      // lights with no RGB concept at all, not a readback gap.
+      const s = d.ip ? await elgato.getElgatoState(d.ip) : null;
+      return { id: d.id, provider: 'elgato', name: d.name, reachable: !!s, on: s?.on ?? false, brightness: s?.brightness ?? 0, color: 'ffffff' };
     }
     // hue
     const bridge = cfg.hueBridges.find((b) => b.bridgeIp === d.bridgeIp);
@@ -86,6 +95,23 @@ export function addGoveeDevice(ip: string, nameOverride: string | undefined, sku
   const device: LightDeviceConfig = { id: uid(), provider: 'govee', name: nameOverride || sku || ip, ip };
   saveConfig({ lightDevices: [...cfg.lightDevices, device] });
   return { ok: true, device };
+}
+
+export async function addElgatoDevice(ip: string, nameOverride?: string): Promise<{ ok: boolean; error?: string; device?: LightDeviceConfig }> {
+  const test = await elgato.testElgato(ip);
+  if (!test.ok) return { ok: false, error: test.error };
+  const cfg = loadConfig();
+  if (cfg.lightDevices.some((d) => d.provider === 'elgato' && d.ip === ip)) return { ok: false, error: 'That device is already added' };
+  const device: LightDeviceConfig = { id: uid(), provider: 'elgato', name: nameOverride || test.name || ip, ip };
+  saveConfig({ lightDevices: [...cfg.lightDevices, device] });
+  return { ok: true, device };
+}
+
+// discoverElgatoOnNetwork (2026-10-30, direct request: "connect elgato
+// devices") — same "scan the network" UX as WLED above (see
+// lights/elgato.ts's own header for why a subnet sweep was chosen here too).
+export function discoverElgatoOnNetwork(onProgress?: (scanned: number, total: number) => void) {
+  return elgato.discoverElgatoDevices(onProgress);
 }
 
 export async function discoverHueBridges() {
@@ -161,6 +187,11 @@ async function setOneDevice(d: LightDeviceConfig, patch: LightStatePatch): Promi
   if (d.provider === 'govee') {
     if (!d.ip) return;
     await govee.setGoveeState(d.ip, patch); // transitionMs has no equivalent here — ignored
+    return;
+  }
+  if (d.provider === 'elgato') {
+    if (!d.ip) return;
+    await elgato.setElgatoState(d.ip, patch); // color/transitionMs have no equivalent here — ignored, see lights/elgato.ts
     return;
   }
   const cfg = loadConfig();

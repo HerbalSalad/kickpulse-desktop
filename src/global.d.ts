@@ -90,7 +90,7 @@ declare global {
     triggerImmediately: boolean;
   }
 
-  type LightProvider = 'wled' | 'hue' | 'govee';
+  type LightProvider = 'wled' | 'hue' | 'govee' | 'elgato';
 
   interface HueBridgeConfig {
     bridgeIp: string;
@@ -164,6 +164,11 @@ declare global {
   type PairResult = { ok: true; username: string } | { ok: false; needsButtonPress: boolean; error: string };
 
   interface WledDiscoveryResult {
+    ip: string;
+    name: string;
+  }
+
+  interface ElgatoDiscoveryResult {
     ip: string;
     name: string;
   }
@@ -377,6 +382,9 @@ declare global {
       lightsAddWled: (ip: string, name?: string) => Promise<IpcResult & { device?: LightDeviceConfig }>;
       lightsDiscoverWled: () => Promise<WledDiscoveryResult[]>;
       onLightsDiscoverWledProgress: (cb: (p: { scanned: number; total: number }) => void) => void;
+      lightsAddElgato: (ip: string, name?: string) => Promise<IpcResult & { device?: LightDeviceConfig }>;
+      lightsDiscoverElgato: () => Promise<ElgatoDiscoveryResult[]>;
+      onLightsDiscoverElgatoProgress: (cb: (p: { scanned: number; total: number }) => void) => void;
       lightsDiscoverGovee: () => Promise<GoveeDiscoveryOutcome>;
       lightsAddGovee: (ip: string, name?: string, sku?: string) => Promise<IpcResult & { device?: LightDeviceConfig }>;
       lightsDiscoverHueBridges: () => Promise<DiscoveredBridge[]>;

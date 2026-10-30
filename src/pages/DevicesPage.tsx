@@ -53,6 +53,13 @@ function MyDevicesTab({ devices, onDevicesChange }: { devices: LightDeviceConfig
   const [wledScanProgress, setWledScanProgress] = useState<{ scanned: number; total: number } | null>(null);
   const [wledFound, setWledFound] = useState<WledDiscoveryResult[]>([]);
 
+  const [elgatoIp, setElgatoIp] = useState('');
+  const [elgatoBusy, setElgatoBusy] = useState(false);
+  const [elgatoError, setElgatoError] = useState<string | null>(null);
+  const [elgatoScanning, setElgatoScanning] = useState(false);
+  const [elgatoScanProgress, setElgatoScanProgress] = useState<{ scanned: number; total: number } | null>(null);
+  const [elgatoFound, setElgatoFound] = useState<ElgatoDiscoveryResult[]>([]);
+
   const [goveeScanning, setGoveeScanning] = useState(false);
   const [goveeFound, setGoveeFound] = useState<GoveeDiscoveryResult[]>([]);
   const [goveeError, setGoveeError] = useState<string | null>(null);
@@ -86,6 +93,7 @@ function MyDevicesTab({ devices, onDevicesChange }: { devices: LightDeviceConfig
 
   useEffect(() => { refreshStates(); }, []);
   useEffect(() => { window.kickpulseDesktop.onLightsDiscoverWledProgress(setWledScanProgress); }, []);
+  useEffect(() => { window.kickpulseDesktop.onLightsDiscoverElgatoProgress(setElgatoScanProgress); }, []);
 
   const addWled = async () => {
     if (!wledIp.trim()) return;
@@ -109,6 +117,30 @@ function MyDevicesTab({ devices, onDevicesChange }: { devices: LightDeviceConfig
     setWledBusy(false);
     if (!res.ok) { setWledError(res.error || 'Failed to add device'); return; }
     setWledFound((prev) => prev.filter((d) => d.ip !== ip)); await loadAll();
+  };
+
+  const addElgato = async () => {
+    if (!elgatoIp.trim()) return;
+    setElgatoBusy(true); setElgatoError(null);
+    const res = await window.kickpulseDesktop.lightsAddElgato(elgatoIp.trim());
+    setElgatoBusy(false);
+    if (!res.ok) { setElgatoError(res.error || 'Failed to add device'); return; }
+    setElgatoIp(''); await loadAll();
+  };
+
+  const scanForElgato = async () => {
+    setElgatoScanning(true); setElgatoError(null); setElgatoFound([]); setElgatoScanProgress(null);
+    try { setElgatoFound(await window.kickpulseDesktop.lightsDiscoverElgato()); }
+    catch (err: any) { setElgatoError(err?.message || 'Scan failed'); }
+    finally { setElgatoScanning(false); setElgatoScanProgress(null); }
+  };
+
+  const addDiscoveredElgato = async (ip: string, name: string) => {
+    setElgatoBusy(true); setElgatoError(null);
+    const res = await window.kickpulseDesktop.lightsAddElgato(ip, name);
+    setElgatoBusy(false);
+    if (!res.ok) { setElgatoError(res.error || 'Failed to add device'); return; }
+    setElgatoFound((prev) => prev.filter((d) => d.ip !== ip)); await loadAll();
   };
 
   const scanForGovee = async () => {
@@ -242,6 +274,40 @@ function MyDevicesTab({ devices, onDevicesChange }: { devices: LightDeviceConfig
           </Row>
         )}
         {wledError && <div style={{ color: '#f87171', fontSize: 12, marginTop: 6 }}>{wledError}</div>}
+      </Section>
+
+      <Section title="Add an Elgato Light" right={<Wifi size={15} color={COLORS.textDim} />}>
+        <div style={{ fontSize: 12, color: COLORS.textDim, marginBottom: 10 }}>
+          Key Light, Key Light Air, or Ring Light — found on the same network, no app pairing needed.
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <Button onClick={scanForElgato} disabled={elgatoScanning}>
+            <Radar size={13} />
+            {elgatoScanning ? (elgatoScanProgress ? `Scanning… ${elgatoScanProgress.scanned}/${elgatoScanProgress.total}` : 'Scanning…') : 'Scan my network'}
+          </Button>
+        </div>
+        {elgatoFound.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            {elgatoFound.map((d) => {
+              const already = devices.some((x) => x.provider === 'elgato' && x.ip === d.ip);
+              return (
+                <div key={d.ip} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px' }}>
+                  <span style={{ fontSize: 13 }}>{d.name} <span style={{ color: COLORS.textDim, fontSize: 11 }}>({d.ip})</span></span>
+                  <Button variant="primary" disabled={already || elgatoBusy} onClick={() => addDiscoveredElgato(d.ip, d.name)}>{already ? 'Added' : 'Add'}</Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {!elgatoScanning && elgatoFound.length === 0 && (
+          <Row label="Or enter the local IP manually" hint="Found in your router's device list, or the Elgato Control Center app">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <TextInput value={elgatoIp} onChange={setElgatoIp} placeholder="192.168.1.55" style={{ flex: 1 }} />
+              <Button variant="primary" onClick={addElgato} disabled={elgatoBusy || !elgatoIp.trim()}><Plus size={13} />{elgatoBusy ? 'Checking…' : 'Add'}</Button>
+            </div>
+          </Row>
+        )}
+        {elgatoError && <div style={{ color: '#f87171', fontSize: 12, marginTop: 6 }}>{elgatoError}</div>}
       </Section>
 
       <Section title="Add a Govee Light" right={<Radar size={15} color={COLORS.textDim} />}>

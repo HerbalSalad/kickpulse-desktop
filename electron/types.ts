@@ -84,7 +84,7 @@ export interface DesktopConfig {
   voiceLiveCaptionsEnabled: boolean;
 }
 
-export type LightProvider = 'wled' | 'hue' | 'govee';
+export type LightProvider = 'wled' | 'hue' | 'govee' | 'elgato';
 
 // Light Scenes & Reactions (2026-10-18 v2 — replaces the single "Light
 // Presets" concept from earlier the same day). Direct correction: a Scene
@@ -162,8 +162,8 @@ export interface LightDeviceConfig {
   id: string;
   provider: LightProvider;
   name: string;
-  // WLED and Govee (2026-10-16) — both plain IP-addressed local devices,
-  // same field for either.
+  // WLED, Govee, and Elgato (2026-10-30) — all plain IP-addressed local
+  // devices, same field for any of them.
   ip?: string;
   // Hue — which bridge (by ip, matched against hueBridges) and which light
   // id on that bridge (Hue's own numeric light id, as a string).

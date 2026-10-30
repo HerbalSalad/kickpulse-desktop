@@ -36,6 +36,7 @@ import type { YoutubeStatus, TiktokStatus, BotStatus, DiscordSettings, ClipSetti
 import type { DisplayOption } from './overlay-window';
 import type { DiscoveredBridge, HueLightInfo, PairResult } from './lights/hue';
 import type { WledDiscoveryResult } from './lights/wled';
+import type { ElgatoDiscoveryResult } from './lights/elgato';
 import type { GoveeDiscoveryOutcome } from './lights/govee';
 
 contextBridge.exposeInMainWorld('kickpulseOverlay', {
@@ -158,6 +159,12 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
   lightsDiscoverWled: (): Promise<WledDiscoveryResult[]> => ipcRenderer.invoke('lights:discover-wled'),
   onLightsDiscoverWledProgress: (cb: (p: { scanned: number; total: number }) => void) => {
     ipcRenderer.on('lights:discover-wled-progress', (_e, p) => cb(p));
+  },
+  lightsAddElgato: (ip: string, name?: string): Promise<{ ok: boolean; error?: string; device?: LightDeviceConfig }> =>
+    ipcRenderer.invoke('lights:add-elgato', ip, name),
+  lightsDiscoverElgato: (): Promise<ElgatoDiscoveryResult[]> => ipcRenderer.invoke('lights:discover-elgato'),
+  onLightsDiscoverElgatoProgress: (cb: (p: { scanned: number; total: number }) => void) => {
+    ipcRenderer.on('lights:discover-elgato-progress', (_e, p) => cb(p));
   },
   lightsDiscoverGovee: (): Promise<GoveeDiscoveryOutcome> => ipcRenderer.invoke('lights:discover-govee'),
   lightsAddGovee: (ip: string, name?: string, sku?: string): Promise<{ ok: boolean; error?: string; device?: LightDeviceConfig }> =>

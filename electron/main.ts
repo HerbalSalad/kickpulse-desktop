@@ -1001,6 +1001,14 @@ app.whenReady().then(async () => {
   ipcMain.handle('lights:discover-wled', (e) =>
     lights.discoverWledOnNetwork((scanned, total) => e.sender.send('lights:discover-wled-progress', { scanned, total }))
   );
+  ipcMain.handle('lights:add-elgato', async (_e, ip: string, name?: string) => {
+    const res = await lights.addElgatoDevice(ip, name);
+    if (res.ok) reportLightDevicesNow();
+    return res;
+  });
+  ipcMain.handle('lights:discover-elgato', (e) =>
+    lights.discoverElgatoOnNetwork((scanned, total) => e.sender.send('lights:discover-elgato-progress', { scanned, total }))
+  );
   ipcMain.handle('lights:discover-govee', () => lights.discoverGoveeOnNetwork());
   ipcMain.handle('lights:add-govee', (_e, ip: string, name: string | undefined, sku: string | undefined) => {
     const res = lights.addGoveeDevice(ip, name, sku);
