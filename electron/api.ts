@@ -152,6 +152,17 @@ export function reportObsSources(apiKey: string, sources: { sceneName: string; s
   });
 }
 
+// reportObsFilters — same shape/reasoning as reportObsSources right above,
+// for the new obs_toggle_filter Pulse Engine action's own (source, filter)
+// picker (2026-10-30, direct request: "trigger and control filters for
+// OBS and meld").
+export function reportObsFilters(apiKey: string, filters: { sourceName: string; filterName: string }[]): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/desktop/obs-filters-state', apiKey, {
+    method: 'POST',
+    body: JSON.stringify({ filters }),
+  });
+}
+
 // reportMeldState/reportMeldLayers — same shape/reasoning as
 // reportObsState/reportObsSources above, for streamers using Meld Studio
 // instead of OBS (2026-10-25).
@@ -166,6 +177,16 @@ export function reportMeldLayers(apiKey: string, layers: { sceneId: string; laye
   return request<{ ok: boolean }>('/desktop/meld-layers-state', apiKey, {
     method: 'POST',
     body: JSON.stringify({ layers }),
+  });
+}
+
+// reportMeldEffects — same shape/reasoning as reportMeldLayers right
+// above, for the new meld_toggle_filter Pulse Engine action's own
+// (scene, layer, effect) picker (2026-10-30).
+export function reportMeldEffects(apiKey: string, effects: { sceneId: string; layerId: string; effectId: string; effectName: string }[]): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/desktop/meld-effects-state', apiKey, {
+    method: 'POST',
+    body: JSON.stringify({ effects }),
   });
 }
 

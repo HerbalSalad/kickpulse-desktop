@@ -24,7 +24,7 @@ import {
   summarizeKickEvent, summarizeTwitchEvent, KNOWN_KICK_EVENT_TYPES, KNOWN_TWITCH_EVENT_TYPES,
 } from './chat-feed';
 import {
-  getMe, getJumpscareConfig, getScenesConfig, reportObsState, reportObsSources, reportMeldState, reportMeldLayers, reportLightDevices,
+  getMe, getJumpscareConfig, getScenesConfig, reportObsState, reportObsSources, reportObsFilters, reportMeldState, reportMeldLayers, reportMeldEffects, reportLightDevices,
   reportLightScenes, reportLightReactions, reportVoiceEnabled,
   listStreamInfoPresets, createStreamInfoPreset, deleteStreamInfoPreset, applyStreamInfoPreset,
   listPulseRules, createPulseRule, updatePulseRule, deletePulseRule,
@@ -373,6 +373,18 @@ function handleWsMessage(msg: any): void {
         .catch((err) => console.error('[obs] Pulse Engine source toggle failed', err?.message || err));
       return;
     }
+    // obs.toggleFilter (2026-10-30) — the obs_toggle_filter Pulse Engine
+    // action's own broadcast. enabled is explicit true/false, or
+    // undefined/absent to mean "toggle". Momentary (flash on then off) is
+    // handled server-side (routes/pulseRules.js sends a second broadcast
+    // with enabled:false after the configured hold) — this handler just
+    // acts on whatever single enabled value it's given each time.
+    if (msg.event === 'obs.toggleFilter' && msg.payload?.sourceName && msg.payload?.filterName) {
+      obsClient
+        .toggleSourceFilterEnabled(msg.payload.sourceName, msg.payload.filterName, msg.payload.enabled)
+        .catch((err) => console.error('[obs] Pulse Engine filter toggle failed', err?.message || err));
+      return;
+    }
     // obs.startReplayBuffer/stopReplayBuffer/saveReplayBuffer (2026-10-18) —
     // the obs_start_replay_buffer/obs_stop_replay_buffer/obs_save_replay_buffer
     // Pulse Engine actions' own broadcast — same fire-and-forget shape as
@@ -397,6 +409,16 @@ function handleWsMessage(msg: any): void {
     }
     if (msg.event === 'meld.toggleLayer' && msg.payload?.sceneId && msg.payload?.layerId) {
       meldClient.toggleLayer(msg.payload.sceneId, msg.payload.layerId).catch((err) => console.error('[meld] Pulse Engine layer toggle failed', err?.message || err));
+      return;
+    }
+    // meld.toggleEffect (2026-10-30) — the meld_toggle_filter Pulse Engine
+    // action's own broadcast. enabled is explicit true/false, or
+    // undefined/absent to mean "just toggle". Momentary is handled
+    // server-side (a second broadcast with enabled:false after the hold).
+    if (msg.event === 'meld.toggleEffect' && msg.payload?.sceneId && msg.payload?.layerId && msg.payload?.effectId) {
+      meldClient
+        .toggleEffect(msg.payload.sceneId, msg.payload.layerId, msg.payload.effectId, msg.payload.enabled)
+        .catch((err) => console.error('[meld] Pulse Engine effect toggle failed', err?.message || err));
       return;
     }
     if (msg.event === 'meld.startStream') { meldClient.startStream().catch((err) => console.error('[meld] start stream failed', err?.message || err)); return; }
@@ -667,6 +689,7 @@ app.whenReady().then(async () => {
         // longer; nothing here is worth surfacing to the user.
       });
       reportObsSources(apiKey, status.sources).catch(() => {});
+      reportObsFilters(apiKey, status.filters).catch(() => {});
     }
   });
 
@@ -679,6 +702,7 @@ app.whenReady().then(async () => {
     if (apiKey) {
       reportMeldState(apiKey, status.scenes).catch(() => {});
       reportMeldLayers(apiKey, status.layers).catch(() => {});
+      reportMeldEffects(apiKey, status.effects).catch(() => {});
     }
   });
 

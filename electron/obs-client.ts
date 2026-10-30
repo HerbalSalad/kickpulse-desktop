@@ -23,7 +23,7 @@ let obs: OBSWebSocketInstance | null = null;
 let status: ObsStatus = {
   connected: false, connecting: false, currentScene: null, scenes: [],
   streaming: false, recording: false, streamDurationMs: 0, recordDurationMs: 0,
-  sources: [],
+  sources: [], filters: [],
 };
 let listeners: Array<(s: ObsStatus) => void> = [];
 
@@ -72,6 +72,30 @@ async function refreshAllSceneItems(): Promise<void> {
     }
   }
   setStatus({ sources: pairs });
+  await refreshAllFilters(pairs);
+}
+
+// Every (source, filter) pair across every known source (2026-10-30, for
+// the obs_toggle_filter Pulse Engine action's own picker — direct request:
+// "trigger and control filters for OBS and meld"). Filters belong to the
+// SOURCE, not the scene-item, so this dedupes by sourceName first (the
+// same source dragged into two scenes has one shared filter list, unlike
+// scene-item visibility above which genuinely is per-scene) before issuing
+// one GetSourceFilterList call per unique source.
+async function refreshAllFilters(pairs: { sceneName: string; sourceName: string }[]): Promise<void> {
+  if (!obs) return;
+  const uniqueSourceNames = [...new Set(pairs.map((p) => p.sourceName))];
+  const filters: { sourceName: string; filterName: string; filterEnabled: boolean }[] = [];
+  for (const sourceName of uniqueSourceNames) {
+    try {
+      const list = await getSourceFilters(sourceName);
+      for (const f of list) filters.push({ sourceName, filterName: f.filterName, filterEnabled: f.filterEnabled });
+    } catch {
+      // A source with no filters support (some source types) just throws —
+      // contributes nothing for that one source, never fails the whole pass.
+    }
+  }
+  setStatus({ filters });
 }
 
 export async function connectObs(url: string, password: string): Promise<void> {
@@ -84,7 +108,7 @@ export async function connectObs(url: string, password: string): Promise<void> {
     obs = client;
 
     client.on('ConnectionClosed', () => {
-      setStatus({ connected: false, connecting: false, currentScene: null, scenes: [], sources: [], streaming: false, recording: false, streamDurationMs: 0, recordDurationMs: 0 });
+      setStatus({ connected: false, connecting: false, currentScene: null, scenes: [], sources: [], filters: [], streaming: false, recording: false, streamDurationMs: 0, recordDurationMs: 0 });
     });
     client.on('CurrentProgramSceneChanged', (data) => {
       setStatus({ currentScene: data.sceneName });
@@ -104,6 +128,27 @@ export async function connectObs(url: string, password: string): Promise<void> {
     });
     client.on('SceneItemListReindexed', () => {
       refreshAllSceneItems().catch((err) => console.error('[obs] source list refresh failed', err));
+    });
+    // A filter added/removed/reordered on any source (2026-10-30) — same
+    // "re-run the full pass on a deliberate user action" reasoning as the
+    // SceneItem* listeners above.
+    client.on('SourceFilterListReindexed', () => {
+      refreshAllFilters(status.sources).catch((err) => console.error('[obs] filter list refresh failed', err));
+    });
+    client.on('SourceFilterCreated', () => {
+      refreshAllFilters(status.sources).catch((err) => console.error('[obs] filter list refresh failed', err));
+    });
+    client.on('SourceFilterRemoved', () => {
+      refreshAllFilters(status.sources).catch((err) => console.error('[obs] filter list refresh failed', err));
+    });
+    client.on('SourceFilterEnableStateChanged', (data) => {
+      setStatus({
+        filters: status.filters.map((f) =>
+          f.sourceName === data.sourceName && f.filterName === data.filterName
+            ? { ...f, filterEnabled: Boolean(data.filterEnabled) }
+            : f
+        ),
+      });
     });
     client.on('StreamStateChanged', (data) => {
       setStatus({ streaming: Boolean(data.outputActive) });
@@ -152,7 +197,7 @@ export async function disconnectObs(): Promise<void> {
     }
   }
   obs = null;
-  setStatus({ connected: false, connecting: false, currentScene: null, scenes: [], sources: [], error: undefined, errorCode: undefined, streaming: false, recording: false, streamDurationMs: 0, recordDurationMs: 0 });
+  setStatus({ connected: false, connecting: false, currentScene: null, scenes: [], sources: [], filters: [], error: undefined, errorCode: undefined, streaming: false, recording: false, streamDurationMs: 0, recordDurationMs: 0 });
 }
 
 export async function switchScene(sceneName: string): Promise<void> {
@@ -188,6 +233,28 @@ export async function toggleSourceVisible(sceneName: string, sourceName: string,
   if (!item) throw new Error(`No source named "${sourceName}" in scene "${sceneName}"`);
   const next = visible === undefined ? !item.sceneItemEnabled : visible;
   await setSceneItemEnabled(sceneName, item.sceneItemId, next);
+}
+
+export async function getSourceFilters(sourceName: string): Promise<{ filterName: string; filterEnabled: boolean }[]> {
+  if (!obs) throw new Error('Not connected to OBS');
+  const { filters } = await obs.call('GetSourceFilterList', { sourceName });
+  return (filters as any[]).map((f) => ({ filterName: String(f.filterName), filterEnabled: Boolean(f.filterEnabled) }));
+}
+
+// obs_toggle_filter (2026-10-30, direct request: "trigger and control
+// filters for OBS and meld"). `enabled` undefined means "toggle": read the
+// filter's own current state (obs-websocket's SetSourceFilterEnabled takes
+// an explicit boolean, there's no bare toggle call) and flip it — same
+// "resolve the real target at fire time" shape toggleSourceVisible above
+// already uses for scene items.
+export async function toggleSourceFilterEnabled(sourceName: string, filterName: string, enabled?: boolean): Promise<void> {
+  if (!obs) throw new Error('Not connected to OBS');
+  let next = enabled;
+  if (next === undefined) {
+    const { filterEnabled } = await obs.call('GetSourceFilter', { sourceName, filterName });
+    next = !filterEnabled;
+  }
+  await obs.call('SetSourceFilterEnabled', { sourceName, filterName, filterEnabled: next });
 }
 
 // Stream/record controls (2026-10-15) — each call just fires the request;

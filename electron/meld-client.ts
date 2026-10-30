@@ -50,7 +50,7 @@
 // specifically the kind of thing a real tester against a real running Meld
 // Studio instance (see the app's own testing notes) needs to verify; don't
 // treat this mapping as settled until that happens.
-import type { MeldSceneInfo, MeldLayerInfo, MeldStatus } from './types';
+import type { MeldSceneInfo, MeldLayerInfo, MeldEffectInfo, MeldStatus } from './types';
 import WebSocket from 'ws';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -60,7 +60,7 @@ let socket: WebSocket | null = null;
 let meld: any = null;
 let status: MeldStatus = {
   connected: false, connecting: false, currentSceneId: null,
-  scenes: [], layers: [], streaming: false, recording: false,
+  scenes: [], layers: [], effects: [], streaming: false, recording: false,
 };
 let listeners: Array<(s: MeldStatus) => void> = [];
 
@@ -80,10 +80,11 @@ export function getMeldStatus(): MeldStatus {
   return status;
 }
 
-function parseSession(session: any): { scenes: MeldSceneInfo[]; layers: MeldLayerInfo[]; currentSceneId: string | null } {
+function parseSession(session: any): { scenes: MeldSceneInfo[]; layers: MeldLayerInfo[]; effects: MeldEffectInfo[]; currentSceneId: string | null } {
   const items: Record<string, any> = session?.items || {};
   const scenes: MeldSceneInfo[] = [];
   const layers: MeldLayerInfo[] = [];
+  const effects: MeldEffectInfo[] = [];
   let currentSceneId: string | null = null;
 
   for (const [id, item] of Object.entries(items)) {
@@ -107,13 +108,28 @@ function parseSession(session: any): { scenes: MeldSceneInfo[]; layers: MeldLaye
       visible: item.visible !== false,
     });
   }
-  return { scenes, layers, currentSceneId };
+  // Effect items (2026-10-30, for meld_toggle_filter — direct request:
+  // "trigger and control filters for OBS and meld") — confirmed against
+  // Meld's own WebChannelAPI.md: { type: 'effect', parent: <layerId>,
+  // name, enabled }, unlike layers above this one IS fully documented,
+  // not inferred.
+  for (const [id, item] of Object.entries(items)) {
+    if (item?.type !== 'effect') continue;
+    const layer = layers.find((l) => l.layerId === item.parent);
+    if (!layer) continue; // can't place this effect under a known layer — drop it rather than guess
+    effects.push({
+      sceneId: layer.sceneId, layerId: layer.layerId, effectId: id,
+      effectName: typeof item.name === 'string' && item.name.trim() ? item.name : id,
+      enabled: item.enabled !== false,
+    });
+  }
+  return { scenes, layers, effects, currentSceneId };
 }
 
 function applySession(): void {
   if (!meld) return;
   const parsed = parseSession(meld.session);
-  setStatus({ scenes: parsed.scenes, layers: parsed.layers, currentSceneId: parsed.currentSceneId });
+  setStatus({ scenes: parsed.scenes, layers: parsed.layers, effects: parsed.effects, currentSceneId: parsed.currentSceneId });
 }
 
 export async function connectMeld(url: string): Promise<void> {
@@ -142,7 +158,7 @@ export async function connectMeld(url: string): Promise<void> {
 
     sock.onclose = () => {
       meld = null;
-      setStatus({ connected: false, connecting: false, currentSceneId: null, scenes: [], layers: [], streaming: false, recording: false });
+      setStatus({ connected: false, connecting: false, currentSceneId: null, scenes: [], layers: [], effects: [], streaming: false, recording: false });
     };
 
     meld.sessionChanged.connect(applySession);
@@ -164,7 +180,7 @@ export async function disconnectMeld(): Promise<void> {
   try { socket?.close(); } catch { /* already gone */ }
   socket = null;
   meld = null;
-  setStatus({ connected: false, connecting: false, currentSceneId: null, scenes: [], layers: [], error: undefined, streaming: false, recording: false });
+  setStatus({ connected: false, connecting: false, currentSceneId: null, scenes: [], layers: [], effects: [], error: undefined, streaming: false, recording: false });
 }
 
 export async function switchScene(sceneId: string): Promise<void> {
@@ -184,6 +200,26 @@ export async function toggleLayer(sceneId: string, layerId: string): Promise<voi
 export async function setLayerVisible(layerId: string, visible: boolean): Promise<void> {
   if (!meld) throw new Error('Not connected to Meld Studio');
   meld.setProperty(layerId, 'visible', visible);
+}
+
+// meld_toggle_filter (2026-10-30, direct request: "trigger and control
+// filters for OBS and meld"). Meld's WebChannelAPI only has
+// toggleEffect(sceneId, layerId, effectId) — a bare flip, no explicit
+// on/off setter (confirmed against Meld's own WebChannelAPI.md, see this
+// file's header). enabled undefined means "just toggle, whatever it is" —
+// calls toggleEffect unconditionally. enabled true/false means "make sure
+// it ends up in this state" — only calls toggleEffect if this app's own
+// already-tracked state (status.effects, kept live via sessionChanged)
+// doesn't already match, since calling it when already correct would flip
+// it the WRONG way.
+export async function toggleEffect(sceneId: string, layerId: string, effectId: string, enabled?: boolean): Promise<void> {
+  if (!meld) throw new Error('Not connected to Meld Studio');
+  if (enabled === undefined) {
+    meld.toggleEffect(sceneId, layerId, effectId);
+    return;
+  }
+  const current = status.effects.find((e) => e.effectId === effectId && e.layerId === layerId);
+  if (!current || current.enabled !== enabled) meld.toggleEffect(sceneId, layerId, effectId);
 }
 
 // Explicit start/stop (not toggleStream/toggleRecord) — matches the OBS

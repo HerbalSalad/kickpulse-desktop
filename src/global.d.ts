@@ -263,6 +263,10 @@ declare global {
     streamDurationMs: number;
     recordDurationMs: number;
     sources: { sceneName: string; sourceName: string }[];
+    // 2026-10-30 — obs_toggle_filter's own picker data, see electron/types.ts's
+    // matching field for the full reasoning (this file duplicates that
+    // interface rather than importing it — keep both in sync).
+    filters: { sourceName: string; filterName: string; filterEnabled: boolean }[];
   }
 
   interface IpcResult {
@@ -285,12 +289,24 @@ declare global {
     visible: boolean;
   }
 
+  // 2026-10-30 — meld_toggle_filter's own picker data, see electron/types.ts's
+  // MeldEffectInfo for the full reasoning (confirmed against Meld's own
+  // WebChannelAPI.md).
+  interface MeldEffectInfo {
+    sceneId: string;
+    layerId: string;
+    effectId: string;
+    effectName: string;
+    enabled: boolean;
+  }
+
   interface MeldStatus {
     connected: boolean;
     connecting: boolean;
     currentSceneId: string | null;
     scenes: MeldSceneInfo[];
     layers: MeldLayerInfo[];
+    effects: MeldEffectInfo[];
     streaming: boolean;
     recording: boolean;
     error?: string;

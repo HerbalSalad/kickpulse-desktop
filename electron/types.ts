@@ -271,6 +271,11 @@ export interface ObsStatus {
   // reportObsSources and obs-client.ts's refreshAllSceneItems). Refreshed
   // on connect and whenever a scene or scene-item is added/removed.
   sources: { sceneName: string; sourceName: string }[];
+  // Every (source, filter) pair across every known source (2026-10-30, for
+  // the obs_toggle_filter Pulse Engine action's own picker — direct
+  // request: "trigger and control filters for OBS and meld"). Refreshed
+  // alongside sources — see obs-client.ts's refreshAllSceneItems.
+  filters: { sourceName: string; filterName: string; filterEnabled: boolean }[];
 }
 
 // Meld Studio (2026-10-25) — see electron/meld-client.ts's own header for
@@ -287,12 +292,27 @@ export interface MeldLayerInfo {
   visible: boolean;
 }
 
+// Every effect item across every known layer (2026-10-30, for the
+// meld_toggle_filter Pulse Engine action's own picker — direct request:
+// "trigger and control filters for OBS and meld"). Confirmed against
+// Meld's own WebChannelAPI.md: an 'effect' session item has
+// { type, parent (a layer id), name, enabled } — see meld-client.ts's
+// parseSession().
+export interface MeldEffectInfo {
+  sceneId: string;
+  layerId: string;
+  effectId: string;
+  effectName: string;
+  enabled: boolean;
+}
+
 export interface MeldStatus {
   connected: boolean;
   connecting: boolean;
   currentSceneId: string | null;
   scenes: MeldSceneInfo[];
   layers: MeldLayerInfo[];
+  effects: MeldEffectInfo[];
   streaming: boolean;
   recording: boolean;
   error?: string;

@@ -56,9 +56,20 @@ export interface PulseAction {
   obsSourceScene?: string;
   obsSourceName?: string;
   obsSourceVisible?: boolean;
+  obsFilterSource?: string;  // obs_toggle_filter (2026-10-30)
+  obsFilterName?: string;
+  obsFilterEnabled?: boolean;
+  obsFilterMomentary?: boolean;
+  obsFilterHoldMs?: number;
   meldSceneId?: string;
   meldLayerSceneId?: string;
   meldLayerId?: string;
+  meldFilterSceneId?: string; // meld_toggle_filter (2026-10-30)
+  meldFilterLayerId?: string;
+  meldFilterEffectId?: string;
+  meldFilterEnabled?: boolean;
+  meldFilterMomentary?: boolean;
+  meldFilterHoldMs?: number;
   meldClipDuration?: number; // meld_record_clip, seconds, 0-90, blank = max
   virtualLightConfigId?: string;
   lightMomentary?: boolean;
@@ -117,6 +128,7 @@ export const ACTION_DEFS: { type: string; label: string; hint: string }[] = [
   { type: 'obs_start_record',   label: '⏺ Start Recording (OBS)', hint: 'Starts recording in OBS' },
   { type: 'obs_stop_record',    label: '⏹ Stop Recording (OBS)',  hint: 'Stops recording in OBS' },
   { type: 'obs_toggle_source',  label: '👁 Show/Hide OBS Source', hint: 'Shows/hides a specific source inside a specific scene' },
+  { type: 'obs_toggle_filter',  label: '🎛 Toggle OBS Filter', hint: 'Enable/disable a filter on a source, or flash it on briefly' },
   { type: 'obs_start_replay_buffer', label: '🟢 Start Replay Buffer (OBS)', hint: 'Starts the replay buffer in OBS' },
   { type: 'obs_stop_replay_buffer',  label: '🔴 Stop Replay Buffer (OBS)',  hint: 'Stops the replay buffer in OBS' },
   { type: 'obs_save_replay_buffer',  label: '🎞 Save Clip (Replay Buffer)', hint: 'Saves the last few minutes to disk right now — e.g. bind this to a !clip chat command' },
@@ -129,6 +141,7 @@ export const ACTION_DEFS: { type: string; label: string; hint: string }[] = [
   { type: 'meld_start_record',  label: '⏺ Start Recording (Meld)', hint: 'Starts recording in Meld Studio' },
   { type: 'meld_stop_record',   label: '⏹ Stop Recording (Meld)',  hint: 'Stops recording in Meld Studio' },
   { type: 'meld_toggle_layer',  label: '👁 Show/Hide Meld Layer', hint: 'Shows/hides a specific layer inside a specific scene' },
+  { type: 'meld_toggle_filter', label: '🎛 Toggle Meld Effect', hint: 'Enable/disable an effect on a layer, or flash it on briefly' },
   { type: 'meld_record_clip',  label: '🎞 Save Clip (Meld)',      hint: 'Saves the last few seconds to disk right now — e.g. bind this to a !clip chat command' },
   { type: 'meld_show_replay',  label: '📺 Show Replay (Meld)',    hint: 'Plays the most recent clip back as an overlay on the current scene' },
   { type: 'meld_dismiss_replay', label: '✖ Dismiss Replay (Meld)', hint: 'Removes the replay overlay' },
@@ -289,8 +302,10 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
   const [todoTasks, setTodoTasks] = useState<TargetOption[]>([]);
   const [obsScenes, setObsScenes] = useState<TargetOption[]>([]);
   const [obsSources, setObsSources] = useState<TargetOption[]>([]);
+  const [obsFilters, setObsFilters] = useState<TargetOption[]>([]);
   const [meldScenes, setMeldScenes] = useState<TargetOption[]>([]);
   const [meldLayers, setMeldLayers] = useState<TargetOption[]>([]);
+  const [meldEffects, setMeldEffects] = useState<TargetOption[]>([]);
   const [lightDevices, setLightDevices] = useState<TargetOption[]>([]);
   const [lightReactions, setLightReactions] = useState<TargetOption[]>([]);
   const [lightScenes, setLightScenes] = useState<TargetOption[]>([]);
@@ -322,6 +337,7 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
     window.kickpulseDesktop.obsGetStatus().then((s) => {
       setObsScenes(s.scenes.map((sc) => ({ id: sc.sceneUuid, name: sc.sceneName })));
       setObsSources(s.sources.map((src) => ({ id: `${src.sceneName}\u001f${src.sourceName}`, name: `${src.sourceName} — in ${src.sceneName}` })));
+      setObsFilters((s.filters ?? []).map((f) => ({ id: `${f.sourceName}\u001f${f.filterName}`, name: `${f.filterName} — on ${f.sourceName}` })));
     }).catch(() => {});
     window.kickpulseDesktop.lightsListDevices().then((devices) => {
       setLightDevices(devices.map((d) => ({ id: d.id, name: d.name })));
@@ -339,6 +355,7 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
     window.kickpulseDesktop.onObsStatus((s) => {
       setObsScenes(s.scenes.map((sc) => ({ id: sc.sceneUuid, name: sc.sceneName })));
       setObsSources(s.sources.map((src) => ({ id: `${src.sceneName}\u001f${src.sourceName}`, name: `${src.sourceName} — in ${src.sceneName}` })));
+      setObsFilters((s.filters ?? []).map((f) => ({ id: `${f.sourceName}\u001f${f.filterName}`, name: `${f.filterName} — on ${f.sourceName}` })));
     });
   }, []);
 
@@ -348,10 +365,12 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
     window.kickpulseDesktop.meldGetStatus().then((s) => {
       setMeldScenes(s.scenes.map((sc) => ({ id: sc.sceneId, name: sc.sceneName })));
       setMeldLayers(s.layers.map((l) => ({ id: `${l.sceneId}\u001f${l.layerId}`, name: l.layerName })));
+      setMeldEffects((s.effects ?? []).map((e) => ({ id: `${e.sceneId}\u001f${e.layerId}\u001f${e.effectId}`, name: e.effectName })));
     }).catch(() => {});
     window.kickpulseDesktop.onMeldStatus((s) => {
       setMeldScenes(s.scenes.map((sc) => ({ id: sc.sceneId, name: sc.sceneName })));
       setMeldLayers(s.layers.map((l) => ({ id: `${l.sceneId}\u001f${l.layerId}`, name: l.layerName })));
+      setMeldEffects((s.effects ?? []).map((e) => ({ id: `${e.sceneId}\u001f${e.layerId}\u001f${e.effectId}`, name: e.effectName })));
     });
   }, []);
 
@@ -662,6 +681,36 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
                 </span>
               </div>
             )}
+            {a.type === 'obs_toggle_filter' && (
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  {obsFilters.length > 0 ? (
+                    <Select
+                      value={a.obsFilterSource && a.obsFilterName ? `${a.obsFilterSource}\u001f${a.obsFilterName}` : ''}
+                      onChange={(v) => { const [sourceName, filterName] = v.split('\u001f'); setAction(idx, { obsFilterSource: sourceName || undefined, obsFilterName: filterName || undefined }); }}
+                      options={[{ value: '', label: 'pick a filter…' }, ...obsFilters.map(f => ({ value: f.id, label: f.name }))]} style={{ width: 240 }} />
+                  ) : (
+                    <>
+                      <TextInput value={a.obsFilterSource ?? ''} onChange={(v) => setAction(idx, { obsFilterSource: v })} placeholder="exact source name" style={{ width: 160 }} />
+                      <TextInput value={a.obsFilterName ?? ''} onChange={(v) => setAction(idx, { obsFilterName: v })} placeholder="exact filter name" style={{ width: 160 }} />
+                    </>
+                  )}
+                  <Select value={a.obsFilterEnabled === undefined ? '' : String(a.obsFilterEnabled)}
+                    onChange={(v) => setAction(idx, { obsFilterEnabled: v === '' ? undefined : v === 'true' })}
+                    options={[{ value: '', label: 'Toggle (flip current state)' }, { value: 'true', label: 'Enable' }, { value: 'false', label: 'Disable' }]} style={{ width: 180 }} />
+                </div>
+                <Toggle checked={!!a.obsFilterMomentary} onChange={(v) => setAction(idx, { obsFilterMomentary: v })} label="Trigger briefly, then disable" />
+                {a.obsFilterMomentary && (
+                  <Row label="hold for">
+                    <NumberInput value={a.obsFilterHoldMs ?? 1500} min={50} onChange={(v) => setAction(idx, { obsFilterHoldMs: Math.max(50, v) })} style={{ width: 90 }} />
+                    <span style={{ fontSize: 12, color: '#9ca3af', marginLeft: 8 }}>ms</span>
+                  </Row>
+                )}
+                <span style={{ fontSize: 11, color: '#6b7280' }}>
+                  {obsFilters.length > 0 ? 'Live from your connected OBS — Settings → Broadcast Software' : 'Connect OBS in Settings → Broadcast Software to pick from a real filter list, or type the exact source/filter names now'}
+                </span>
+              </div>
+            )}
             {a.type === 'meld_switch_scene' && (
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <Select value={a.meldSceneId ?? ''} onChange={(v) => setAction(idx, { meldSceneId: v || undefined })}
@@ -679,6 +728,29 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
                   options={[{ value: '', label: 'pick a layer…' }, ...meldLayers.map(s => ({ value: s.id, label: s.name }))]} style={{ width: 240 }} />
                 <span style={{ fontSize: 11, color: '#6b7280' }}>
                   {meldLayers.length > 0 ? 'Live from your connected Meld Studio — Settings → Broadcast Software' : 'Connect Meld Studio (Settings → Broadcast Software) to pick a layer'}
+                </span>
+              </div>
+            )}
+            {a.type === 'meld_toggle_filter' && (
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Select
+                    value={a.meldFilterSceneId && a.meldFilterLayerId && a.meldFilterEffectId ? `${a.meldFilterSceneId}\u001f${a.meldFilterLayerId}\u001f${a.meldFilterEffectId}` : ''}
+                    onChange={(v) => { const [sceneId, layerId, effectId] = v.split('\u001f'); setAction(idx, { meldFilterSceneId: sceneId || undefined, meldFilterLayerId: layerId || undefined, meldFilterEffectId: effectId || undefined }); }}
+                    options={[{ value: '', label: 'pick an effect…' }, ...meldEffects.map(e => ({ value: e.id, label: e.name }))]} style={{ width: 240 }} />
+                  <Select value={a.meldFilterEnabled === undefined ? '' : String(a.meldFilterEnabled)}
+                    onChange={(v) => setAction(idx, { meldFilterEnabled: v === '' ? undefined : v === 'true' })}
+                    options={[{ value: '', label: 'Toggle (flip current state)' }, { value: 'true', label: 'Enable' }, { value: 'false', label: 'Disable' }]} style={{ width: 180 }} />
+                </div>
+                <Toggle checked={!!a.meldFilterMomentary} onChange={(v) => setAction(idx, { meldFilterMomentary: v })} label="Trigger briefly, then disable" />
+                {a.meldFilterMomentary && (
+                  <Row label="hold for">
+                    <NumberInput value={a.meldFilterHoldMs ?? 1500} min={50} onChange={(v) => setAction(idx, { meldFilterHoldMs: Math.max(50, v) })} style={{ width: 90 }} />
+                    <span style={{ fontSize: 12, color: '#9ca3af', marginLeft: 8 }}>ms</span>
+                  </Row>
+                )}
+                <span style={{ fontSize: 11, color: '#6b7280' }}>
+                  {meldEffects.length > 0 ? 'Live from your connected Meld Studio — Settings → Broadcast Software' : 'Connect Meld Studio (Settings → Broadcast Software) to pick an effect'}
                 </span>
               </div>
             )}
