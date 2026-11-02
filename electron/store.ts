@@ -5,7 +5,7 @@
 // version may be ESM-only (a real, known gotcha for several "electron-*"
 // helper packages — see obs-websocket-js's own header comment).
 
-import { app } from 'electron';
+import { app, safeStorage } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,6 +18,8 @@ const DEFAULTS: DesktopConfig = {
   obsPassword: '',
   meldUrl: 'ws://127.0.0.1:13376',
   overlayDisplayId: null,
+  minimizeToTrayOnClose: true,
+  trayHintShown: false,
   hueBridges: [],
   lightDevices: [],
   lightScenes: [],
@@ -35,19 +37,59 @@ function configPath(): string {
   return path.join(app.getPath('userData'), 'config.json');
 }
 
-export function loadConfig(): DesktopConfig {
+// Secrets at rest (2026-11-01) — apiKey and obsPassword used to be written
+// to config.json in plain text; both are real credentials (the API key is
+// the same bearer token the Stream Deck plugin uses, the OBS password often
+// doubles as the one guarding the actual stream). safeStorage encrypts with
+// the OS's own credential store (Windows DPAPI, tied to the logged-in user)
+// — no key management of our own. ENC_PREFIX marks an already-encrypted
+// value so a pre-existing plaintext config.json keeps reading correctly
+// (decryptSecret just returns it as-is); the NEXT saveConfig() call
+// re-writes it encrypted, so migration is automatic and lazy, no explicit
+// migration step needed.
+const ENC_PREFIX = 'enc:v1:';
+
+function encryptSecret(value: string | null): string | null {
+  if (value == null || value === '') return value;
+  if (!safeStorage.isEncryptionAvailable()) return value; // best-effort — never lose the value just because encryption isn't available
+  return ENC_PREFIX + safeStorage.encryptString(value).toString('base64');
+}
+
+function decryptSecret(value: string | null): string | null {
+  if (value == null || !value.startsWith(ENC_PREFIX)) return value; // plaintext (pre-encryption config, or encryption was unavailable when saved)
+  if (!safeStorage.isEncryptionAvailable()) return null; // can't decrypt without the OS keychain that encrypted it — treat as absent, not as ciphertext
   try {
-    const raw = fs.readFileSync(configPath(), 'utf8');
-    return { ...DEFAULTS, ...JSON.parse(raw) };
+    return safeStorage.decryptString(Buffer.from(value.slice(ENC_PREFIX.length), 'base64'));
   } catch {
-    return { ...DEFAULTS };
+    return null;
   }
+}
+
+export function loadConfig(): DesktopConfig {
+  let raw: Partial<DesktopConfig> = {};
+  try {
+    raw = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
+  } catch {
+    raw = {};
+  }
+  const merged: DesktopConfig = { ...DEFAULTS, ...raw };
+  // Decrypted in-memory shape — every existing caller already does
+  // `loadConfig().apiKey` etc. expecting the real usable value, so this
+  // stays the one place that knows about ENC_PREFIX at all.
+  merged.apiKey = decryptSecret(merged.apiKey);
+  merged.obsPassword = decryptSecret(merged.obsPassword) ?? '';
+  return merged;
 }
 
 export function saveConfig(partial: Partial<DesktopConfig>): DesktopConfig {
   const next = { ...loadConfig(), ...partial };
+  const onDisk = {
+    ...next,
+    apiKey: encryptSecret(next.apiKey),
+    obsPassword: encryptSecret(next.obsPassword) ?? '',
+  };
   fs.mkdirSync(path.dirname(configPath()), { recursive: true });
-  fs.writeFileSync(configPath(), JSON.stringify(next, null, 2), 'utf8');
+  fs.writeFileSync(configPath(), JSON.stringify(onDisk, null, 2), 'utf8');
   return next;
 }
 

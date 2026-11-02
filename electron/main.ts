@@ -66,6 +66,7 @@ import type {
   ScenesConfigResponse,
 } from './types';
 import { initUpdater, getUpdaterStatus, checkForUpdates, installUpdate } from './updater';
+import { createTray, showTrayHint, destroyTray } from './tray';
 
 // Single-instance lock (2026-10-27) — found via a real incident, not
 // theorized: a voice-triggered "Start Streaming (OBS)" fired THREE nearly
@@ -86,6 +87,18 @@ import { initUpdater, getUpdaterStatus, checkForUpdates, installUpdate } from '.
 // call this losing instance would still run every side-effecting line below
 // (media server, OBS/Meld connections, WS subscribe) before the quit
 // actually took effect.
+// Windows AppUserModelID (2026-11-01) — without this, Windows attributes
+// every notification (the tray's own "still running" balloon included) and
+// taskbar grouping to the raw electron.exe binary's own built-in identity,
+// which shows up as a generic "Electron" header instead of this app's name
+// — direct report, confirmed live against the tray balloon added today.
+// Matches package.json's build.appId exactly, same id electron-builder
+// bakes into the installed shortcut, so this is correct in both dev and
+// the packaged app.
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.kickpulse.desktop');
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
   process.exit(0);
@@ -139,6 +152,12 @@ const SAMPLE_SCENE = {
 };
 
 let mainWindow: BrowserWindow | null = null;
+// isQuitting (2026-11-01) — flips true in 'before-quit', which fires before
+// any window gets its own 'close' event for EVERY real quit path (the
+// tray's Quit item, electron-updater's quitAndInstall, OS shutdown/logoff),
+// so mainWindow's 'close' handler below can tell "the app is actually
+// exiting" apart from "the user just clicked the titlebar's close button."
+let isQuitting = false;
 let wsHandle: WsClientHandle | null = null;
 let twitchIrcHandle: TwitchIrcHandle | null = null;
 let remoteConfig: JumpscareConfigResponse | null = null;
@@ -193,6 +212,22 @@ function createMainWindow(): void {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+  // Background mode (2026-11-01, direct request) — hide instead of close,
+  // so the overlay/OBS/Meld connections/lights/voice all keep running the
+  // same way they already do while the window is simply unfocused. Only
+  // lets the real close through when the app is genuinely quitting
+  // (isQuitting, set in 'before-quit' below) or the user has turned this
+  // off in Settings (minimizeToTrayOnClose: false).
+  mainWindow.on('close', (e) => {
+    if (isQuitting) return;
+    if (loadConfig().minimizeToTrayOnClose === false) return;
+    e.preventDefault();
+    mainWindow?.hide();
+    if (!loadConfig().trayHintShown) {
+      showTrayHint();
+      saveConfig({ trayHintShown: true });
+    }
   });
   mainWindow.webContents.on('console-message', (_e, _level, message) => {
     console.log('[app console]', message);
@@ -656,6 +691,7 @@ function testSceneNow(): void {
 app.whenReady().then(async () => {
   createOverlayWindow(loadConfig().overlayDisplayId);
   createMainWindow();
+  createTray(() => mainWindow, () => app.quit());
 
   // Self-heal if the CONFIGURED display gets unplugged mid-session — see
   // watchDisplayChanges's own comment. No need to notify the renderer here;
@@ -717,6 +753,10 @@ app.whenReady().then(async () => {
   // ----- Account / config -----
   ipcMain.handle('config:get', () => loadConfig());
   ipcMain.handle('status:get', () => currentStatus);
+  ipcMain.handle('config:set-minimize-to-tray', (_e, enabled: boolean) => {
+    saveConfig({ minimizeToTrayOnClose: enabled });
+    return { ok: true };
+  });
 
   // Shared by config:save-api-key AND the two OAuth login handlers below —
   // a real session_token from logging in goes through the IDENTICAL
@@ -1381,10 +1421,15 @@ app.whenReady().then(async () => {
   reportVoiceEnabledNow();
 });
 
+app.on('before-quit', () => {
+  isQuitting = true;
+});
+
 app.on('window-all-closed', () => {
-  // Real "stay running in the tray even with the main window closed"
-  // background mode is a near-term follow-up — see the project README's
-  // Next list — not needed to verify today's core mechanism.
+  // mainWindow's own 'close' handler normally hides it instead of letting
+  // it actually close, so in practice this only fires if every window gets
+  // destroyed some other way (or background mode is turned off) — kept as
+  // a safety net so the app can't end up with no windows and no way to quit.
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -1393,4 +1438,5 @@ app.on('will-quit', () => {
   wsHandle?.close();
   obsClient.disconnectObs().catch(() => {});
   meldClient.disconnectMeld().catch(() => {});
+  destroyTray();
 });

@@ -20,6 +20,42 @@ import type { ObsSceneInfo, ObsSceneItemInfo, ObsStatus } from './types';
 type OBSWebSocketInstance = InstanceType<typeof import('obs-websocket-js').default>;
 
 let obs: OBSWebSocketInstance | null = null;
+// Auto-reconnect (2026-11-01, reliability fix) — OBS restarting/crashing
+// mid-stream used to just leave this app disconnected until someone
+// manually hit Connect again, silently breaking every Pulse Engine OBS
+// action in the meantime. lastUrl/lastPassword remember what to reconnect
+// TO; explicitlyDisconnected is set by disconnectObs() (the user's own
+// Disconnect button, or app shutdown) so THAT kind of close never triggers
+// a reconnect loop; wasConnected only turns on after a connection actually
+// SUCCEEDED, so a bad URL/password on the very first attempt fails once and
+// surfaces to the caller (see main.ts's obs:connect handler) instead of
+// retrying forever in the background against a typo.
+let lastUrl: string | null = null;
+let lastPassword = '';
+let explicitlyDisconnected = false;
+let wasConnected = false;
+let reconnectTimer: NodeJS.Timeout | null = null;
+
+function clearReconnectTimer(): void {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function scheduleReconnect(delayMs = 3000): void {
+  if (reconnectTimer || explicitlyDisconnected || !lastUrl) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    if (explicitlyDisconnected || !lastUrl) return;
+    connectObs(lastUrl, lastPassword).catch(() => {
+      // Still down — keep trying with backoff, capped at 30s, until it
+      // either reconnects or the user explicitly disconnects.
+      scheduleReconnect(Math.min(delayMs * 2, 30000));
+    });
+  }, delayMs);
+}
+
 let status: ObsStatus = {
   connected: false, connecting: false, currentScene: null, scenes: [],
   streaming: false, recording: false, streamDurationMs: 0, recordDurationMs: 0,
@@ -100,6 +136,14 @@ async function refreshAllFilters(pairs: { sceneName: string; sourceName: string 
 
 export async function connectObs(url: string, password: string): Promise<void> {
   await disconnectObs();
+  // disconnectObs() above (cleaning up any previous connection) sets
+  // explicitlyDisconnected — reset it here, now that we're actually trying
+  // to connect again, whether this call came from the user clicking Connect
+  // or from scheduleReconnect() retrying in the background.
+  lastUrl = url;
+  lastPassword = password;
+  explicitlyDisconnected = false;
+  clearReconnectTimer();
   setStatus({ connecting: true, error: undefined });
 
   try {
@@ -109,6 +153,10 @@ export async function connectObs(url: string, password: string): Promise<void> {
 
     client.on('ConnectionClosed', () => {
       setStatus({ connected: false, connecting: false, currentScene: null, scenes: [], sources: [], filters: [], streaming: false, recording: false, streamDurationMs: 0, recordDurationMs: 0 });
+      if (wasConnected && !explicitlyDisconnected) {
+        wasConnected = false;
+        scheduleReconnect();
+      }
     });
     client.on('CurrentProgramSceneChanged', (data) => {
       setStatus({ currentScene: data.sceneName });
@@ -158,6 +206,7 @@ export async function connectObs(url: string, password: string): Promise<void> {
     });
 
     await client.connect(url, password || undefined);
+    wasConnected = true;
     setStatus({ connected: true, connecting: false, error: undefined, errorCode: undefined });
     await refreshSceneList();
     await refreshOutputStatus();
@@ -189,6 +238,9 @@ async function refreshOutputStatus(): Promise<void> {
 }
 
 export async function disconnectObs(): Promise<void> {
+  explicitlyDisconnected = true;
+  wasConnected = false;
+  clearReconnectTimer();
   if (obs) {
     try {
       await obs.disconnect();

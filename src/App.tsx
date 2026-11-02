@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import ErrorBoundary from './components/ErrorBoundary';
 import TitleBar from './components/TitleBar';
 import Sidebar from './components/Sidebar';
 import DashboardPage from './pages/DashboardPage';
@@ -50,6 +51,13 @@ export default function App() {
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <Sidebar active={active} onSelect={select} connected={connected} />
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
+      {/* key={active} (2026-11-01) — remounts this boundary on every nav
+          change, so switching away from a page that just crashed always
+          starts clean, with no leftover error state from the previous
+          page. onReset covers the case where the crash happened WHILE
+          already on a page (no nav change to remount it) — jump to the
+          dashboard, a page with no per-page state of its own to break. */}
+      <ErrorBoundary key={active} onReset={() => select('dashboard')}>
         {active === 'dashboard' && <DashboardPage />}
         {active === 'settings' && <SettingsPage />}
         {active === 'connections' && <ConnectionsPage userId={me?.userId || null} />}
@@ -134,6 +142,7 @@ export default function App() {
         {active === 'light-scenes' && <LightScenesPage />}
         {active === 'light-reactions' && <LightReactionsPage />}
         {active === 'voice-commands' && <VoiceCommandsPage />}
+      </ErrorBoundary>
       </main>
       </div>
     </div>

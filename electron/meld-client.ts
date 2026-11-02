@@ -6,10 +6,17 @@
 // Meld instead uses Qt's QWebChannel protocol over a WebSocket, which needs
 // Qt's own `qwebchannel` client library to speak (raw request/response
 // framing isn't publicly documented, only the resulting JS object API is).
-// `qwebchannel` ships no TypeScript types and is pure CommonJS — a plain
-// `require()` (returns `any`) is the correct, deliberate choice here, not an
-// oversight; this file compiles to CommonJS the same as every other
-// electron/*.ts file.
+// `qwebchannel` ships no TypeScript types and is pure CommonJS. Loaded via a
+// dynamic `import()` inside connectMeld (2026-11-01 — was a top-level
+// `require()`), the same escape hatch obs-client.ts already uses for
+// obs-websocket-js: Node's dynamic import can load a CJS module fine (its
+// `module.exports` lands on `.default`), and unlike a bare `require()` call,
+// a real `import()` expression is preserved by tsc under this file's
+// CommonJS compile target rather than rewritten — see obs-client.ts's own
+// header for the full reasoning. A top-level `require()` also turned out to
+// bypass Vite/vitest's module graph entirely in tests (real network calls
+// to a real `qwebchannel` instead of the mocked one), which is what
+// actually surfaced this.
 //
 // Source for everything below: Meld's own WebChannelAPI.md
 // (github.com/MeldStudio/streamdeck) — confirmed, not guessed:
@@ -53,11 +60,36 @@
 import type { MeldSceneInfo, MeldLayerInfo, MeldEffectInfo, MeldStatus } from './types';
 import WebSocket from 'ws';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { QWebChannel } = require('qwebchannel');
-
 let socket: WebSocket | null = null;
 let meld: any = null;
+// Auto-reconnect (2026-11-01, reliability fix) — same reasoning and shape
+// as obs-client.ts's own lastUrl/explicitlyDisconnected/wasConnected/
+// reconnectTimer: an unexpected drop (Meld restarts/crashes) retries in the
+// background; an explicit disconnectMeld() call or a failed FIRST attempt
+// (bad URL/Meld not running) does not.
+let lastUrl: string | null = null;
+let explicitlyDisconnected = false;
+let wasConnected = false;
+let reconnectTimer: NodeJS.Timeout | null = null;
+
+function clearReconnectTimer(): void {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function scheduleReconnect(delayMs = 3000): void {
+  if (reconnectTimer || explicitlyDisconnected || !lastUrl) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    if (explicitlyDisconnected || !lastUrl) return;
+    connectMeld(lastUrl).catch(() => {
+      scheduleReconnect(Math.min(delayMs * 2, 30000));
+    });
+  }, delayMs);
+}
+
 let status: MeldStatus = {
   connected: false, connecting: false, currentSceneId: null,
   scenes: [], layers: [], effects: [], streaming: false, recording: false,
@@ -134,6 +166,9 @@ function applySession(): void {
 
 export async function connectMeld(url: string): Promise<void> {
   await disconnectMeld();
+  lastUrl = url;
+  explicitlyDisconnected = false;
+  clearReconnectTimer();
   setStatus({ connecting: true, error: undefined });
 
   try {
@@ -144,6 +179,9 @@ export async function connectMeld(url: string): Promise<void> {
     });
     socket = sock;
 
+    const { QWebChannel } = (await import('qwebchannel')).default as {
+      QWebChannel: new (sock: WebSocket, cb: (channel: any) => void) => any;
+    };
     await new Promise<void>((resolve, reject) => {
       // eslint-disable-next-line no-new
       new QWebChannel(sock, (channel: any) => {
@@ -159,6 +197,10 @@ export async function connectMeld(url: string): Promise<void> {
     sock.onclose = () => {
       meld = null;
       setStatus({ connected: false, connecting: false, currentSceneId: null, scenes: [], layers: [], effects: [], streaming: false, recording: false });
+      if (wasConnected && !explicitlyDisconnected) {
+        wasConnected = false;
+        scheduleReconnect();
+      }
     };
 
     meld.sessionChanged.connect(applySession);
@@ -166,6 +208,7 @@ export async function connectMeld(url: string): Promise<void> {
     meld.isRecordingChanged.connect(() => setStatus({ recording: !!meld.isRecording }));
 
     applySession();
+    wasConnected = true;
     setStatus({ connected: true, connecting: false, error: undefined, streaming: !!meld.isStreaming, recording: !!meld.isRecording });
   } catch (err: any) {
     try { socket?.close(); } catch { /* already gone */ }
@@ -177,6 +220,9 @@ export async function connectMeld(url: string): Promise<void> {
 }
 
 export async function disconnectMeld(): Promise<void> {
+  explicitlyDisconnected = true;
+  wasConnected = false;
+  clearReconnectTimer();
   try { socket?.close(); } catch { /* already gone */ }
   socket = null;
   meld = null;

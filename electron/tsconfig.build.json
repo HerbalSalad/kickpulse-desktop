@@ -3,5 +3,10 @@
   "compilerOptions": {
     "noEmit": false,
     "outDir": "../dist-electron"
-  }
+  },
+  // Test files run through vitest's own transform (vitest.config.ts), never
+  // through tsc — excluded here (but not from the base tsconfig.json, so
+  // `npm run typecheck` still type-checks them) so they don't get compiled
+  // into dist-electron and shipped in the actual installer.
+  "exclude": ["**/*.test.ts"]
 }

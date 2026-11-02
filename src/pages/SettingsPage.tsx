@@ -23,7 +23,7 @@
 // real privilege-persistence risk).
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Settings, LogOut, Trash2, ExternalLink } from 'lucide-react';
-import { Page, Section, Button, COLORS } from '../components/ui';
+import { Page, Section, Button, Toggle, COLORS } from '../components/ui';
 
 const WEBSITE = 'https://www.kickpulsebot.com';
 
@@ -72,6 +72,19 @@ export default function SettingsPage() {
   };
 
   const userId = status?.me?.userId ?? null;
+
+  // Background mode (2026-11-01) — see electron/tray.ts/main.ts's
+  // mainWindow 'close' handler. Loaded from the full config object (the
+  // same one getConfig() already returns everywhere else in this app)
+  // rather than its own IPC round trip.
+  const [minimizeToTray, setMinimizeToTrayState] = useState(true);
+  useEffect(() => {
+    window.kickpulseDesktop.getConfig().then((cfg) => setMinimizeToTrayState(cfg.minimizeToTrayOnClose !== false));
+  }, []);
+  const toggleMinimizeToTray = async (next: boolean) => {
+    setMinimizeToTrayState(next);
+    await window.kickpulseDesktop.setMinimizeToTray(next);
+  };
 
   // Discord live notification
   const [discordUrl, setDiscordUrl] = useState('');
@@ -215,6 +228,17 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+      </Section>
+
+      <Section title="Background">
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+          <p style={{ fontSize: 12, color: COLORS.textDim, margin: 0 }}>
+            Keep the overlay, OBS/Meld connections, lights, and voice commands running when the window is
+            closed — closing it just hides it to the system tray instead of quitting. Click the tray icon to
+            reopen, or choose Quit from its menu to fully exit.
+          </p>
+          <Toggle checked={minimizeToTray} onChange={toggleMinimizeToTray} />
+        </div>
       </Section>
 
       {userId && discordLoaded && (

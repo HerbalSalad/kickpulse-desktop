@@ -80,6 +80,11 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
   loginWithKick: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('auth:login-kick'),
   loginWithTwitch: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('auth:login-twitch'),
   disconnect: (): Promise<void> => ipcRenderer.invoke('config:disconnect'),
+  // Background mode (2026-11-01) — see electron/tray.ts/main.ts's
+  // mainWindow 'close' handler. getConfig() above already returns the
+  // current minimizeToTrayOnClose value; this is just the setter.
+  setMinimizeToTray: (enabled: boolean): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('config:set-minimize-to-tray', enabled),
 
   // Custom title bar (2026-10-20) — main window is frame: false now, so
   // TitleBar.tsx drives minimize/maximize/close itself over IPC.

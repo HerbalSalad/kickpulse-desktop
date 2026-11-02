@@ -38,6 +38,19 @@ export interface DesktopConfig {
   // primary. See electron/overlay-window.ts's own DisplayOption/
   // resolveDisplay for the fallback behavior if this id stops existing.
   overlayDisplayId: number | null;
+  // Background mode (2026-11-01) — closing the main window hides it instead
+  // of quitting the whole app (overlay, OBS/Meld connections, lights, voice
+  // all keep running); a real quit only happens from the tray's own "Quit"
+  // item, or whatever triggered app.quit() directly (the updater's
+  // quitAndInstall, OS shutdown). false restores the old "closing the window
+  // quits everything" behavior for anyone who doesn't want a tray icon at
+  // all. See electron/tray.ts and main.ts's mainWindow 'close' handler.
+  minimizeToTrayOnClose: boolean;
+  // trayHintShown — whether the one-time "still running in the background"
+  // tray balloon has already been shown once, ever. Not reset by
+  // reconnecting/disconnecting an account; this is purely "has this person
+  // already learned the tray icon is there."
+  trayHintShown: boolean;
   // Lights (2026-10-15) — see electron/lights/ for the real provider clients
   // (researched against Lumia Stream's own supported-brands page, per direct
   // request: "look up how lumia handles lights"). Two providers to start,

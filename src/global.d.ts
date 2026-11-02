@@ -68,6 +68,8 @@ declare global {
     obsPassword: string;
     meldUrl: string;
     overlayDisplayId: number | null;
+    minimizeToTrayOnClose: boolean;
+    trayHintShown: boolean;
     hueBridges: HueBridgeConfig[];
     lightDevices: LightDeviceConfig[];
     lightScenes: LightScene[];
@@ -331,6 +333,7 @@ declare global {
       loginWithKick: () => Promise<IpcResult>;
       loginWithTwitch: () => Promise<IpcResult>;
       disconnect: () => Promise<void>;
+      setMinimizeToTray: (enabled: boolean) => Promise<IpcResult>;
       onStatus: (cb: (status: DesktopStatus) => void) => void;
 
       windowMinimize: () => Promise<void>;
