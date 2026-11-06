@@ -61,7 +61,7 @@ import {
   getHeardLog, getCachedPhrases, getLivePartialText, invalidateRecognizer, ensureModelDownloaded,
   isModelReady, type VoiceModelSize,
 } from './voiceCommands';
-import { configureWhisperCaptions, setWhisperCaptionsEnabled, requestModelComparisonPreview } from './whisperCaptions';
+import { configureWhisperCaptions, setWhisperCaptionsEnabled, setCompareModeEnabled, getCompareLog } from './whisperCaptions';
 import { isWhisperModelReady, downloadWhisperModel, type WhisperModelKey } from './whisperModels';
 import type {
   JumpscarePayload, DesktopStatus, JumpscareConfigResponse, MediaServerInfo,
@@ -1164,28 +1164,28 @@ app.whenReady().then(async () => {
   ipcMain.handle('voice:get-live-partial', () => getLivePartialText());
   ipcMain.handle('voice:get-phrases', () => getCachedPhrases());
 
-  // Model comparison preview (2026-11-06, direct request) — runs ONE real
-  // spoken window through both whisper.cpp caption models back to back so
-  // the accuracy difference can be judged directly, without flipping the
-  // Engine setting and speaking twice. Needs the mic actually flowing
-  // (electron/voice-window.ts), which otherwise only happens while Voice
-  // Commands itself is on — so this starts it temporarily if it wasn't
-  // already running, and only stops it again if IT was the one that
-  // started it (never tears down a listener the user actually has on).
-  ipcMain.handle('voice:start-model-preview', async () => {
-    const missing = (['base', 'small'] as WhisperModelKey[]).filter((k) => !isWhisperModelReady(k));
-    if (missing.length) return { ok: false, error: 'missing-models', missing };
-    const wasListening = isVoiceListening();
-    if (!wasListening) startVoiceListening(loadConfig().voiceInputDeviceId);
-    try {
-      const results = await requestModelComparisonPreview(['base', 'small']);
-      return { ok: true, results };
-    } catch (err: any) {
-      return { ok: false, error: err?.message || String(err) };
-    } finally {
-      if (!wasListening) stopVoiceListening();
+  // Live model comparison monitor (2026-11-06, direct request: "I want to
+  // see the live monitor... able to actively test without pressing some
+  // stupid button") — once switched on, every real spoken utterance runs
+  // through BOTH whisper.cpp caption models continuously; the renderer
+  // polls getCompareLog() the same way it already polls getHeardLog()/
+  // getLivePartial() for Voice Commands' own live monitor. Needs the mic
+  // actually flowing (electron/voice-window.ts), which otherwise only
+  // happens while Voice Commands itself is on — so turning this on starts
+  // listening if it wasn't already running, and turning it off only stops
+  // listening if Voice Commands itself isn't also relying on it.
+  ipcMain.handle('voice:set-compare-mode', (_e, enabled: boolean) => {
+    if (enabled) {
+      const missing = (['base', 'small'] as WhisperModelKey[]).filter((k) => !isWhisperModelReady(k));
+      if (missing.length) return { ok: false, error: 'missing-models', missing };
     }
+    setCompareModeEnabled(enabled);
+    const shouldListen = enabled || loadConfig().voiceEnabled;
+    if (shouldListen && !isVoiceListening()) startVoiceListening(loadConfig().voiceInputDeviceId);
+    else if (!shouldListen && isVoiceListening()) stopVoiceListening();
+    return { ok: true };
   });
+  ipcMain.handle('voice:get-compare-log', () => getCompareLog());
 
   // ----- Pulse Engine -----
   // Thin passthroughs to electron/api.ts — see that file's own comment on

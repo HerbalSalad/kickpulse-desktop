@@ -244,11 +244,12 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
     getLivePartial: (): Promise<string> => ipcRenderer.invoke('voice:get-live-partial'),
     getPhrases: (): Promise<{ id: string; phrase: string; matchMode: 'contains' | 'exact'; minConfidence: number; triggerImmediately: boolean }[]> =>
       ipcRenderer.invoke('voice:get-phrases'),
-    // Model comparison preview (2026-11-06) — see electron/main.ts's own
-    // 'voice:start-model-preview' handler for the full picture.
-    startModelPreview: (): Promise<{
-      ok: boolean; results?: { model: 'base' | 'small'; text: string; ms: number }[]; error?: string; missing?: ('base' | 'small')[];
-    }> => ipcRenderer.invoke('voice:start-model-preview'),
+    // Live model comparison monitor (2026-11-06) — see electron/main.ts's
+    // own 'voice:set-compare-mode' handler for the full picture.
+    setCompareMode: (enabled: boolean): Promise<{ ok: boolean; error?: string; missing?: ('base' | 'small')[] }> =>
+      ipcRenderer.invoke('voice:set-compare-mode', enabled),
+    getCompareLog: (): Promise<{ at: number; results: { model: 'base' | 'small'; text: string; ms: number }[] }[]> =>
+      ipcRenderer.invoke('voice:get-compare-log'),
   },
 
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url),

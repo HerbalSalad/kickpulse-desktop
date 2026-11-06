@@ -79,49 +79,35 @@ export function setWhisperCaptionsEnabled(v: boolean): void {
   if (!v) resetWindow();
 }
 
-// ── Model comparison preview (2026-11-06) — direct request: "give me a
-// preview of both voice models so I can tell how accurate the new live
-// caption engine is." Runs the SAME one real spoken window through every
-// requested model (base AND small) back to back and hands back both
-// transcripts + how long each took, so the difference can be judged
-// directly on one real utterance instead of switching the setting,
-// speaking again, and trying to remember what the other model said.
-// Deliberately local-only — never calls report()/reportVoiceCaption(), so
-// a preview never touches the live OBS widget or the server.
-let previewPending = false;
-let previewModels: WhisperModelKey[] = [];
-let previewTimer: ReturnType<typeof setTimeout> | undefined;
-let previewResolve: ((r: { model: WhisperModelKey; text: string; ms: number }[]) => void) | undefined;
-let previewReject: ((err: Error) => void) | undefined;
+// ── Live model comparison monitor (2026-11-06) — direct request: "I want
+// to see the live monitor of the caption model... I want to be able to
+// actively test without pressing some stupid button." Not a one-shot test:
+// once this is switched on, EVERY real window that flushes (the same VAD
+// windowing this file already does for normal captions) runs through BOTH
+// base and small, continuously, for as long as it's on — same "flip a
+// toggle, then just talk, no further button presses" shape Voice Commands'
+// own Live monitor panel already uses for its heard-log/partial-text
+// polling. compareLog is a capped rolling buffer the renderer polls (same
+// pattern as getHeardLog/getLivePartial) rather than something pushed over
+// IPC, since a plain poll is simpler and this is a low-frequency feed (one
+// entry per spoken utterance, not per frame). Deliberately separate from
+// report()/reportVoiceCaption() — comparison entries never reach the live
+// OBS widget or the server; only the normal single-model path (below) does.
+let compareModeEnabled = false;
+let compareLog: { at: number; results: { model: WhisperModelKey; text: string; ms: number }[] }[] = [];
+const COMPARE_LOG_MAX = 25;
 
-const PREVIEW_TIMEOUT_MS = 20_000;
-
-export function requestModelComparisonPreview(
-  models: WhisperModelKey[],
-): Promise<{ model: WhisperModelKey; text: string; ms: number }[]> {
-  if (previewPending) return Promise.reject(new Error('A preview is already in progress'));
-  return new Promise((resolve, reject) => {
-    previewModels = models;
-    previewPending = true;
-    previewResolve = resolve;
-    previewReject = reject;
-    previewTimer = setTimeout(() => {
-      finishPreview(undefined, new Error("Didn't hear anything — check your mic and try again."));
-    }, PREVIEW_TIMEOUT_MS);
-  });
+export function setCompareModeEnabled(v: boolean): void {
+  compareModeEnabled = v;
+  if (!v) compareLog = [];
 }
 
-function finishPreview(result: { model: WhisperModelKey; text: string; ms: number }[] | undefined, err?: Error): void {
-  if (!previewPending) return;
-  clearTimeout(previewTimer);
-  previewPending = false;
-  const resolve = previewResolve;
-  const reject = previewReject;
-  previewResolve = undefined;
-  previewReject = undefined;
-  resetWindow();
-  if (err) reject?.(err);
-  else resolve?.(result!);
+export function getCompareModeEnabled(): boolean {
+  return compareModeEnabled;
+}
+
+export function getCompareLog(): { at: number; results: { model: WhisperModelKey; text: string; ms: number }[] }[] {
+  return compareLog;
 }
 
 function resetWindow(): void {
@@ -147,7 +133,7 @@ function rms(buf: Buffer): number {
 // 16kHz). A no-op whenever Live Captions is off, so a streamer who never
 // enables it pays zero extra CPU for this second engine.
 export function handleCaptionAudioFrame(buffer: Buffer): void {
-  if (!enabled && !previewPending) return;
+  if (!enabled && !compareModeEnabled) return;
   const frameMs = (buffer.length / BYTES_PER_SAMPLE / SAMPLE_RATE) * 1000;
   const isSpeech = rms(buffer) >= SILENCE_RMS_THRESHOLD;
 
@@ -172,14 +158,14 @@ function flush(): void {
   const windowChunks = chunks;
   const totalMs = windowMs;
   const hadSpeech = hasSpeech;
-  const isPreview = previewPending;
-  const models = previewModels;
+  const doCompare = compareModeEnabled;
   resetWindow();
-  if (!hadSpeech || totalMs < MIN_WINDOW_MS) return; // too short/silent — preview just keeps waiting for the next window
-  if (isPreview) {
-    comparePreview(Buffer.concat(windowChunks), models).catch((err: any) => finishPreview(undefined, err));
+  if (!hadSpeech || totalMs < MIN_WINDOW_MS) return; // too short/silent — just keep waiting for the next window
+  const pcm = Buffer.concat(windowChunks);
+  if (doCompare) {
+    compareContinuous(pcm).catch((err: any) => console.error('[captions] compare failed:', err?.message || err));
   } else {
-    transcribe(Buffer.concat(windowChunks)).catch((err: any) =>
+    transcribe(pcm).catch((err: any) =>
       console.error('[captions] transcribe failed:', err?.message || err));
   }
 }
@@ -247,11 +233,9 @@ async function transcribe(pcm: Buffer): Promise<void> {
 
 // Runs the SAME captured window through every model being compared, one at
 // a time (reusing one written WAV file — the audio never changes between
-// runs, only which model reads it) — see requestModelComparisonPreview()'s
-// own header above for why this exists.
-async function comparePreview(pcm: Buffer, models: WhisperModelKey[]): Promise<void> {
-  busy = true;
-  const wavPath = path.join(os.tmpdir(), `kickpulse-caption-preview-${crypto.randomUUID()}.wav`);
+// runs, only which model reads it).
+async function transcribeWithModels(pcm: Buffer, models: WhisperModelKey[]): Promise<{ model: WhisperModelKey; text: string; ms: number }[]> {
+  const wavPath = path.join(os.tmpdir(), `kickpulse-caption-cmp-${crypto.randomUUID()}.wav`);
   try {
     writeWavFile(pcm, wavPath);
     const results: { model: WhisperModelKey; text: string; ms: number }[] = [];
@@ -261,10 +245,29 @@ async function comparePreview(pcm: Buffer, models: WhisperModelKey[]): Promise<v
       const text = await runWhisperCli(wavPath, key);
       results.push({ model: key, text: text || '(heard nothing)', ms: Date.now() - startedAt });
     }
-    finishPreview(results);
+    return results;
+  } finally {
+    fs.rm(wavPath, { force: true }, () => {});
+  }
+}
+
+// The compare-mode path for a real flushed window — every utterance while
+// the monitor is on, not a one-shot. Also keeps feeding the normal
+// single-model report() path (using whichever model is the actually
+// configured engine) so turning compare mode on never silently stops real
+// captions that are also streaming to the OBS widget.
+async function compareContinuous(pcm: Buffer): Promise<void> {
+  busy = true;
+  try {
+    const results = await transcribeWithModels(pcm, ['base', 'small']);
+    compareLog.push({ at: Date.now(), results });
+    if (compareLog.length > COMPARE_LOG_MAX) compareLog.shift();
+    if (enabled) {
+      const primary = results.find((r) => r.model === modelKey);
+      if (primary && primary.text && primary.ms > 0) report(primary.text);
+    }
   } finally {
     busy = false;
-    fs.rm(wavPath, { force: true }, () => {});
   }
 }
 
@@ -282,6 +285,7 @@ function report(text: string): void {
 
 export function teardownWhisperCaptions(): void {
   enabled = false;
-  if (previewPending) finishPreview(undefined, new Error('Voice listening was stopped before a preview finished.'));
+  compareModeEnabled = false;
+  compareLog = [];
   resetWindow();
 }

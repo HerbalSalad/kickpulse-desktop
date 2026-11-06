@@ -438,9 +438,8 @@ declare global {
         getHeardLog: () => Promise<{ text: string; confidence: number; matchedPhrase: string | null; at: number }[]>;
         getLivePartial: () => Promise<string>;
         getPhrases: () => Promise<VoicePhraseInfo[]>;
-        startModelPreview: () => Promise<{
-          ok: boolean; results?: { model: WhisperModelKey; text: string; ms: number }[]; error?: string; missing?: WhisperModelKey[];
-        }>;
+        setCompareMode: (enabled: boolean) => Promise<{ ok: boolean; error?: string; missing?: WhisperModelKey[] }>;
+        getCompareLog: () => Promise<{ at: number; results: { model: WhisperModelKey; text: string; ms: number }[] }[]>;
       };
 
       openExternal: (url: string) => Promise<void>;
