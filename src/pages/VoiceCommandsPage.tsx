@@ -78,6 +78,10 @@ export default function VoiceCommandsPage() {
   const [captionsModel, setCaptionsModel] = useState<WhisperModelKey>('small');
   const [captionsModelReady, setCaptionsModelReady] = useState<boolean | null>(null);
   const [captionsDownloadPct, setCaptionsDownloadPct] = useState<number | null>(null);
+  const [previewState, setPreviewState] = useState<'idle' | 'running'>('idle');
+  const [previewResults, setPreviewResults] = useState<{ model: WhisperModelKey; text: string; ms: number }[]>([]);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewMissing, setPreviewMissing] = useState<WhisperModelKey[]>([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   useEffect(() => {
@@ -184,6 +188,39 @@ export default function VoiceCommandsPage() {
     setCaptionsDownloadPct(null);
     if (!result.ok) { alert(`Download failed: ${result.error}`); return; }
     setCaptionsModelReady(true);
+  };
+
+  // Compare Base vs Small (2026-11-06) — see electron/main.ts's
+  // 'voice:start-model-preview' handler for the full flow (temporarily
+  // starts the mic listener if Voice Commands itself isn't already on).
+  const runModelPreview = async () => {
+    setPreviewState('running');
+    setPreviewError(null);
+    setPreviewMissing([]);
+    setPreviewResults([]);
+    const result = await window.kickpulseDesktop.voice.startModelPreview();
+    setPreviewState('idle');
+    if (!result.ok) {
+      if (result.error === 'missing-models') {
+        setPreviewError('Download both models first to compare them.');
+        setPreviewMissing(result.missing || []);
+      } else {
+        setPreviewError(result.error || 'Preview failed — try again.');
+      }
+      return;
+    }
+    setPreviewResults(result.results || []);
+  };
+
+  const downloadMissingPreviewModel = (key: WhisperModelKey) => async () => {
+    const label = CAPTIONS_MODEL_OPTIONS.find((m) => m.value === key)?.label;
+    setPreviewError(`Downloading ${label}…`);
+    window.kickpulseDesktop.voice.onDownloadWhisperProgress((pct) => setPreviewError(`Downloading ${label}… ${pct}%`));
+    const result = await window.kickpulseDesktop.voice.downloadWhisperModel(key);
+    if (!result.ok) { setPreviewError(`Download failed: ${result.error}`); return; }
+    setPreviewMissing((m) => m.filter((k) => k !== key));
+    setPreviewError(null);
+    if (key === captionsModel) setCaptionsModelReady(true);
   };
 
   // ── In-app live monitor ──────────────────────────────────────────────────
@@ -425,6 +462,34 @@ export default function VoiceCommandsPage() {
                 <Button onClick={downloadCaptionsModel}><Download size={14} />Download {CAPTIONS_MODEL_OPTIONS.find((m) => m.value === captionsModel)?.label} model</Button>
               )}
             </Row>
+            <Row label="Compare models" hint="Says one sentence through BOTH Base and Small so you can see exactly how much more accurate Small really is before committing to the slower download/CPU cost.">
+              <Button onClick={runModelPreview} disabled={previewState === 'running'}>
+                {previewState === 'running' ? 'Listening… say a sentence' : 'Compare Base vs Small'}
+              </Button>
+            </Row>
+            {previewError && (
+              <div style={{ fontSize: 12, color: '#fca5a5', marginTop: 4 }}>
+                {previewError}
+                {previewMissing.length > 0 && (
+                  <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
+                    {previewMissing.includes('base') && <Button onClick={downloadMissingPreviewModel('base')}><Download size={14} />Download Base</Button>}
+                    {previewMissing.includes('small') && <Button onClick={downloadMissingPreviewModel('small')}><Download size={14} />Download Small</Button>}
+                  </div>
+                )}
+              </div>
+            )}
+            {previewResults.length > 0 && (
+              <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                {previewResults.map((r) => (
+                  <div key={r.model} style={{ flex: 1, background: 'rgba(0,0,0,0.3)', border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: COLORS.textFaint, marginBottom: 4 }}>
+                      {CAPTIONS_MODEL_OPTIONS.find((m) => m.value === r.model)?.label} — {(r.ms / 1000).toFixed(1)}s
+                    </div>
+                    <div style={{ fontSize: 14, color: COLORS.text }}>"{r.text}"</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </Section>
         </>
       )}

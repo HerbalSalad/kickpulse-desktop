@@ -79,6 +79,51 @@ export function setWhisperCaptionsEnabled(v: boolean): void {
   if (!v) resetWindow();
 }
 
+// ── Model comparison preview (2026-11-06) — direct request: "give me a
+// preview of both voice models so I can tell how accurate the new live
+// caption engine is." Runs the SAME one real spoken window through every
+// requested model (base AND small) back to back and hands back both
+// transcripts + how long each took, so the difference can be judged
+// directly on one real utterance instead of switching the setting,
+// speaking again, and trying to remember what the other model said.
+// Deliberately local-only — never calls report()/reportVoiceCaption(), so
+// a preview never touches the live OBS widget or the server.
+let previewPending = false;
+let previewModels: WhisperModelKey[] = [];
+let previewTimer: ReturnType<typeof setTimeout> | undefined;
+let previewResolve: ((r: { model: WhisperModelKey; text: string; ms: number }[]) => void) | undefined;
+let previewReject: ((err: Error) => void) | undefined;
+
+const PREVIEW_TIMEOUT_MS = 20_000;
+
+export function requestModelComparisonPreview(
+  models: WhisperModelKey[],
+): Promise<{ model: WhisperModelKey; text: string; ms: number }[]> {
+  if (previewPending) return Promise.reject(new Error('A preview is already in progress'));
+  return new Promise((resolve, reject) => {
+    previewModels = models;
+    previewPending = true;
+    previewResolve = resolve;
+    previewReject = reject;
+    previewTimer = setTimeout(() => {
+      finishPreview(undefined, new Error("Didn't hear anything — check your mic and try again."));
+    }, PREVIEW_TIMEOUT_MS);
+  });
+}
+
+function finishPreview(result: { model: WhisperModelKey; text: string; ms: number }[] | undefined, err?: Error): void {
+  if (!previewPending) return;
+  clearTimeout(previewTimer);
+  previewPending = false;
+  const resolve = previewResolve;
+  const reject = previewReject;
+  previewResolve = undefined;
+  previewReject = undefined;
+  resetWindow();
+  if (err) reject?.(err);
+  else resolve?.(result!);
+}
+
 function resetWindow(): void {
   chunks = [];
   windowMs = 0;
@@ -102,7 +147,7 @@ function rms(buf: Buffer): number {
 // 16kHz). A no-op whenever Live Captions is off, so a streamer who never
 // enables it pays zero extra CPU for this second engine.
 export function handleCaptionAudioFrame(buffer: Buffer): void {
-  if (!enabled) return;
+  if (!enabled && !previewPending) return;
   const frameMs = (buffer.length / BYTES_PER_SAMPLE / SAMPLE_RATE) * 1000;
   const isSpeech = rms(buffer) >= SILENCE_RMS_THRESHOLD;
 
@@ -127,10 +172,16 @@ function flush(): void {
   const windowChunks = chunks;
   const totalMs = windowMs;
   const hadSpeech = hasSpeech;
+  const isPreview = previewPending;
+  const models = previewModels;
   resetWindow();
-  if (!hadSpeech || totalMs < MIN_WINDOW_MS) return;
-  transcribe(Buffer.concat(windowChunks)).catch((err: any) =>
-    console.error('[captions] transcribe failed:', err?.message || err));
+  if (!hadSpeech || totalMs < MIN_WINDOW_MS) return; // too short/silent — preview just keeps waiting for the next window
+  if (isPreview) {
+    comparePreview(Buffer.concat(windowChunks), models).catch((err: any) => finishPreview(undefined, err));
+  } else {
+    transcribe(Buffer.concat(windowChunks)).catch((err: any) =>
+      console.error('[captions] transcribe failed:', err?.message || err));
+  }
 }
 
 function writeWavFile(pcm: Buffer, destPath: string): void {
@@ -163,9 +214,9 @@ function whisperCliPath(): string {
   return path.join(__dirname, '../assets/whisper/bin/whisper-cli.exe');
 }
 
-function runWhisperCli(wavPath: string): Promise<string> {
+function runWhisperCli(wavPath: string, key: WhisperModelKey): Promise<string> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(whisperCliPath(), ['-m', whisperModelPathFor(modelKey), '-f', wavPath, '-nt', '-np']);
+    const proc = spawn(whisperCliPath(), ['-m', whisperModelPathFor(key), '-f', wavPath, '-nt', '-np']);
     let out = '';
     let settled = false;
     const timer = setTimeout(() => {
@@ -186,8 +237,31 @@ async function transcribe(pcm: Buffer): Promise<void> {
   const wavPath = path.join(os.tmpdir(), `kickpulse-caption-${crypto.randomUUID()}.wav`);
   try {
     writeWavFile(pcm, wavPath);
-    const text = await runWhisperCli(wavPath);
+    const text = await runWhisperCli(wavPath, modelKey);
     if (text) report(text);
+  } finally {
+    busy = false;
+    fs.rm(wavPath, { force: true }, () => {});
+  }
+}
+
+// Runs the SAME captured window through every model being compared, one at
+// a time (reusing one written WAV file — the audio never changes between
+// runs, only which model reads it) — see requestModelComparisonPreview()'s
+// own header above for why this exists.
+async function comparePreview(pcm: Buffer, models: WhisperModelKey[]): Promise<void> {
+  busy = true;
+  const wavPath = path.join(os.tmpdir(), `kickpulse-caption-preview-${crypto.randomUUID()}.wav`);
+  try {
+    writeWavFile(pcm, wavPath);
+    const results: { model: WhisperModelKey; text: string; ms: number }[] = [];
+    for (const key of models) {
+      if (!isWhisperModelReady(key)) { results.push({ model: key, text: '(model not downloaded)', ms: 0 }); continue; }
+      const startedAt = Date.now();
+      const text = await runWhisperCli(wavPath, key);
+      results.push({ model: key, text: text || '(heard nothing)', ms: Date.now() - startedAt });
+    }
+    finishPreview(results);
   } finally {
     busy = false;
     fs.rm(wavPath, { force: true }, () => {});
@@ -208,5 +282,6 @@ function report(text: string): void {
 
 export function teardownWhisperCaptions(): void {
   enabled = false;
+  if (previewPending) finishPreview(undefined, new Error('Voice listening was stopped before a preview finished.'));
   resetWindow();
 }

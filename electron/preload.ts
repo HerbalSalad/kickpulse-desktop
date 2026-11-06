@@ -244,6 +244,11 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
     getLivePartial: (): Promise<string> => ipcRenderer.invoke('voice:get-live-partial'),
     getPhrases: (): Promise<{ id: string; phrase: string; matchMode: 'contains' | 'exact'; minConfidence: number; triggerImmediately: boolean }[]> =>
       ipcRenderer.invoke('voice:get-phrases'),
+    // Model comparison preview (2026-11-06) — see electron/main.ts's own
+    // 'voice:start-model-preview' handler for the full picture.
+    startModelPreview: (): Promise<{
+      ok: boolean; results?: { model: 'base' | 'small'; text: string; ms: number }[]; error?: string; missing?: ('base' | 'small')[];
+    }> => ipcRenderer.invoke('voice:start-model-preview'),
   },
 
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url),
