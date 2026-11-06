@@ -75,8 +75,11 @@ export interface DesktopConfig {
   // mic. See electron/voiceCommands.ts.
   voiceEnabled: boolean;
   voiceInputDeviceId: string | null;
-  // voiceModelSize — which real Vosk model is in use (electron/voiceModels.ts).
-  voiceModelSize: 'small' | 'medium' | 'large' | 'xlarge';
+  // No model-size choice any more (2026-11-06) — Voice Commands only ever
+  // matches a short closed phrase list, where the Small Vosk model's own
+  // strict-grammar mode already works great; Medium/Large/Extra Large just
+  // cost more RAM/CPU for open-vocabulary accuracy this feature never
+  // needed. See electron/voiceModels.ts.
   // voiceStrictVocabulary — "Strict phrase matching" (true, grammar-
   // constrained to your phrases + Recognition Words, much higher accuracy
   // on those, can't make out anything else) vs "Open vocabulary" (false,
@@ -96,10 +99,9 @@ export interface DesktopConfig {
   // on.
   voiceLiveCaptionsEnabled: boolean;
   // voiceCaptionsModel (2026-11-06) — which whisper.cpp ggml model powers
-  // Live Captions specifically, independent of voiceModelSize above (Vosk,
-  // used for actual Voice Command matching only — see
-  // electron/whisperCaptions.ts's header for why captions moved to a
-  // separate engine entirely). See electron/whisperModels.ts.
+  // Live Captions specifically, independent of Voice Command matching above
+  // (still Vosk — see electron/whisperCaptions.ts's header for why captions
+  // moved to a separate engine entirely). See electron/whisperModels.ts.
   voiceCaptionsModel: 'base' | 'small';
 }
 

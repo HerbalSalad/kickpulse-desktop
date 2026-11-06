@@ -27,7 +27,6 @@ const DEFAULTS: DesktopConfig = {
   lightReactions: [],
   voiceEnabled: false,
   voiceInputDeviceId: null,
-  voiceModelSize: 'small',
   voiceStrictVocabulary: false,
   voiceRecognitionWords: [],
   voiceLiveCaptionsEnabled: false,

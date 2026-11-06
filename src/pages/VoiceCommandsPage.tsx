@@ -16,7 +16,12 @@
 // native module instead of the WASM approach the first pass used, and why
 // that's actually a better fit for everything this page controls: real
 // per-word confidence, a real grammar/word-list mechanism, true streaming
-// partial results).
+// partial results). Collapsed to the Small model only (2026-11-06, direct
+// decision) — this only ever matches a short closed phrase list, where
+// Small's own strict-grammar mode already works great; Medium/Large/Extra
+// Large just cost more RAM/CPU for open-vocabulary accuracy this feature
+// never needed (that's what Live Captions' separate whisper.cpp engine is
+// for — see its own Engine setting further down this page).
 import { useCallback, useEffect, useState } from 'react';
 import { Mic, MicOff, Plus, Trash2, Pencil, Download, ExternalLink } from 'lucide-react';
 import {
@@ -32,20 +37,6 @@ interface Rule {
   cooldown_seconds: number; user_cooldown_seconds: number;
 }
 interface Draft { name: string; trigger: Trigger; actions: PulseAction[]; cooldownSeconds: number }
-
-// Medium's hint flags its real tradeoff (2026-10-27, direct report: "any of
-// them besides small gives me massive lag... even on the medium"): it's a
-// "-lgraph" model — a smaller download because its recognition graph is
-// expanded lazily DURING listening instead of once up front, which is a
-// real, Vosk-documented reason it can run slower WHILE recognizing than
-// Large despite its much smaller file size — not a bug, just a genuinely
-// different size-vs-speed tradeoff than the file size alone suggests.
-const MODEL_OPTIONS: { value: VoiceModelSize; label: string; hint: string }[] = [
-  { value: 'small', label: 'Small', hint: '~40MB — fastest, least accurate' },
-  { value: 'medium', label: 'Medium', hint: '~130MB — a smaller download, but can run slower WHILE listening than Large (its graph is built on the fly) — try Large if this feels sluggish' },
-  { value: 'large', label: 'Large', hint: '~1.8GB — most common accurate English model, often snappier live than Medium despite the bigger download' },
-  { value: 'xlarge', label: 'Extra Large', hint: '~2.3GB — most accurate, slowest' },
-];
 
 // Live Captions runs on a separate engine (whisper.cpp, not Vosk — see
 // electron/whisperCaptions.ts) specifically because Vosk's grammar is the
@@ -69,7 +60,6 @@ export default function VoiceCommandsPage() {
   const [enabled, setEnabled] = useState(false);
   const [inputDeviceId, setInputDeviceId] = useState<string | null>(null);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [modelSize, setModelSize] = useState<VoiceModelSize>('small');
   const [strictVocabulary, setStrictVocabulary] = useState(false);
   const [recognitionWordsText, setRecognitionWordsText] = useState('');
   const [liveCaptionsEnabled, setLiveCaptionsEnabled] = useState(false);
@@ -96,7 +86,6 @@ export default function VoiceCommandsPage() {
       const s = await window.kickpulseDesktop.voice.getSettings();
       setEnabled(s.enabled);
       setInputDeviceId(s.inputDeviceId);
-      setModelSize(s.modelSize);
       setStrictVocabulary(s.strictVocabulary);
       setRecognitionWordsText(s.recognitionWords.join('\n'));
       setLiveCaptionsEnabled(s.liveCaptionsEnabled);
@@ -107,8 +96,8 @@ export default function VoiceCommandsPage() {
 
   useEffect(() => {
     if (!settingsLoaded) return;
-    window.kickpulseDesktop.voice.isModelReady(modelSize).then(setModelReady);
-  }, [settingsLoaded, modelSize]);
+    window.kickpulseDesktop.voice.isModelReady().then(setModelReady);
+  }, [settingsLoaded]);
 
   useEffect(() => {
     if (!settingsLoaded) return;
@@ -133,7 +122,7 @@ export default function VoiceCommandsPage() {
     }
     const result = await window.kickpulseDesktop.voice.setEnabled(next);
     if (!result.ok && result.needsModelDownload) {
-      alert(`Download the ${MODEL_OPTIONS.find(m => m.value === modelSize)?.label} model first — use the Download button below.`);
+      alert('Download the Vosk model first — use the Download button below.');
       return;
     }
     setEnabled(next);
@@ -145,15 +134,10 @@ export default function VoiceCommandsPage() {
     await window.kickpulseDesktop.voice.setInputDevice(next);
   };
 
-  const changeModelSize = async (size: VoiceModelSize) => {
-    setModelSize(size);
-    await window.kickpulseDesktop.voice.setModelSize(size);
-  };
-
   const downloadModel = async () => {
     setDownloadPct(0);
     window.kickpulseDesktop.voice.onDownloadProgress(setDownloadPct);
-    const result = await window.kickpulseDesktop.voice.downloadModel(modelSize);
+    const result = await window.kickpulseDesktop.voice.downloadModel();
     setDownloadPct(null);
     if (!result.ok) { alert(`Download failed: ${result.error}`); return; }
     setModelReady(true);
@@ -431,18 +415,14 @@ export default function VoiceCommandsPage() {
             </Section>
           )}
 
-          <Section title="Model" right={<span style={{ fontSize: 12, color: COLORS.textFaint }}>bigger = more accurate, slower, more RAM</span>}>
-            <Row label="Size">
-              <Select value={modelSize} onChange={(v) => changeModelSize(v as VoiceModelSize)}
-                options={MODEL_OPTIONS.map((m) => ({ value: m.value, label: `${m.label} — ${m.hint}` }))} />
-            </Row>
+          <Section title="Model" right={<span style={{ fontSize: 12, color: COLORS.textFaint }}>Small — the only size offered, since this only ever matches a short phrase list</span>}>
             <Row label="Status">
               {downloadPct != null ? (
                 <span style={{ color: COLORS.textDim }}>Downloading… {downloadPct}%</span>
               ) : modelReady ? (
                 <span style={{ color: COLORS.success }}>Downloaded, ready to use</span>
               ) : (
-                <Button onClick={downloadModel}><Download size={14} />Download {MODEL_OPTIONS.find((m) => m.value === modelSize)?.label} model</Button>
+                <Button onClick={downloadModel}><Download size={14} />Download model</Button>
               )}
             </Row>
             <Row label="Vocabulary" hint="Strict = much higher accuracy on your own phrases, can't make out anything else (including live captions of arbitrary speech). Open = hears anything, slightly less accurate on your own phrases.">

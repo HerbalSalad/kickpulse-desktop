@@ -59,7 +59,7 @@ import {
 } from './voice-window';
 import {
   getHeardLog, getCachedPhrases, getLivePartialText, invalidateRecognizer, ensureModelDownloaded,
-  isModelReady, type VoiceModelSize,
+  isModelReady,
 } from './voiceCommands';
 import { configureWhisperCaptions, setWhisperCaptionsEnabled, setCompareModeEnabled, getCompareLog } from './whisperCaptions';
 import { isWhisperModelReady, downloadWhisperModel, type WhisperModelKey } from './whisperModels';
@@ -250,7 +250,7 @@ function setStatus(next: DesktopStatus): void {
 // enable/disable logic, including the "model not downloaded yet" guard,
 // instead of a second, drifting copy of it.
 function setVoiceEnabled(enabled: boolean): { ok: boolean; needsModelDownload?: boolean } {
-  if (enabled && !isModelReady(loadConfig().voiceModelSize)) {
+  if (enabled && !isModelReady()) {
     return { ok: false, needsModelDownload: true };
   }
   saveConfig({ voiceEnabled: enabled });
@@ -1104,7 +1104,7 @@ app.whenReady().then(async () => {
     const cfg = loadConfig();
     return {
       enabled: cfg.voiceEnabled, inputDeviceId: cfg.voiceInputDeviceId,
-      modelSize: cfg.voiceModelSize, strictVocabulary: cfg.voiceStrictVocabulary,
+      strictVocabulary: cfg.voiceStrictVocabulary,
       recognitionWords: cfg.voiceRecognitionWords, liveCaptionsEnabled: cfg.voiceLiveCaptionsEnabled,
       captionsModel: cfg.voiceCaptionsModel,
     };
@@ -1113,11 +1113,6 @@ app.whenReady().then(async () => {
   ipcMain.handle('voice:set-input-device', (_e, deviceId: string | null) => {
     saveConfig({ voiceInputDeviceId: deviceId });
     if (isVoiceListening()) setVoiceInputDevice(deviceId);
-    return { ok: true };
-  });
-  ipcMain.handle('voice:set-model-size', (_e, size: VoiceModelSize) => {
-    saveConfig({ voiceModelSize: size });
-    invalidateRecognizer();
     return { ok: true };
   });
   ipcMain.handle('voice:set-strict-vocabulary', (_e, strict: boolean) => {
@@ -1135,10 +1130,10 @@ app.whenReady().then(async () => {
     setWhisperCaptionsEnabled(enabled);
     return { ok: true };
   });
-  ipcMain.handle('voice:is-model-ready', (_e, size: VoiceModelSize) => isModelReady(size));
-  ipcMain.handle('voice:download-model', async (e, size: VoiceModelSize) => {
+  ipcMain.handle('voice:is-model-ready', () => isModelReady());
+  ipcMain.handle('voice:download-model', async (e) => {
     try {
-      await ensureModelDownloaded(size, (pct) => e.sender.send('voice:download-progress', pct));
+      await ensureModelDownloaded((pct) => e.sender.send('voice:download-progress', pct));
       return { ok: true };
     } catch (err: any) {
       return { ok: false, error: err?.message || String(err) };
@@ -1458,7 +1453,7 @@ app.whenReady().then(async () => {
   // Voice Commands — resume listening if it was already turned on last
   // session (persisted in config.json, same as every other on/off setting
   // this app remembers across restarts).
-  if (loadConfig().voiceEnabled && isModelReady(loadConfig().voiceModelSize)) {
+  if (loadConfig().voiceEnabled && isModelReady()) {
     startVoiceListening(loadConfig().voiceInputDeviceId);
   }
   reportVoiceEnabledNow();

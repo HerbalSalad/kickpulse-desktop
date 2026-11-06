@@ -77,16 +77,15 @@ declare global {
     lightReactions: LightReaction[];
     voiceEnabled: boolean;
     voiceInputDeviceId: string | null;
-    voiceModelSize: VoiceModelSize;
     voiceStrictVocabulary: boolean;
     voiceRecognitionWords: string[];
     voiceLiveCaptionsEnabled: boolean;
     voiceCaptionsModel: WhisperModelKey;
   }
 
-  type VoiceModelSize = 'small' | 'medium' | 'large' | 'xlarge';
   // whisper.cpp model powering Live Captions specifically — see
-  // electron/whisperModels.ts. Independent of VoiceModelSize (Vosk) above.
+  // electron/whisperModels.ts. Voice Commands' own Vosk model has no size
+  // choice any more (2026-11-06, Small only — see electron/voiceModels.ts).
   type WhisperModelKey = 'base' | 'small';
   interface VoicePhraseInfo {
     id: string;
@@ -418,18 +417,17 @@ declare global {
 
       voice: {
         getSettings: () => Promise<{
-          enabled: boolean; inputDeviceId: string | null; modelSize: VoiceModelSize;
+          enabled: boolean; inputDeviceId: string | null;
           strictVocabulary: boolean; recognitionWords: string[]; liveCaptionsEnabled: boolean;
           captionsModel: WhisperModelKey;
         }>;
         setEnabled: (enabled: boolean) => Promise<{ ok: boolean; needsModelDownload?: boolean }>;
         setInputDevice: (deviceId: string | null) => Promise<{ ok: boolean }>;
-        setModelSize: (size: VoiceModelSize) => Promise<{ ok: boolean }>;
         setStrictVocabulary: (strict: boolean) => Promise<{ ok: boolean }>;
         setRecognitionWords: (words: string[]) => Promise<{ ok: boolean }>;
         setLiveCaptionsEnabled: (enabled: boolean) => Promise<{ ok: boolean }>;
-        isModelReady: (size: VoiceModelSize) => Promise<boolean>;
-        downloadModel: (size: VoiceModelSize) => Promise<{ ok: boolean; error?: string }>;
+        isModelReady: () => Promise<boolean>;
+        downloadModel: () => Promise<{ ok: boolean; error?: string }>;
         onDownloadProgress: (cb: (pct: number) => void) => void;
         setCaptionsModel: (key: WhisperModelKey) => Promise<{ ok: boolean }>;
         isWhisperModelReady: (key: WhisperModelKey) => Promise<boolean>;

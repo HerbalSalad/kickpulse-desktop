@@ -36,10 +36,15 @@
 // — no special handling needed beyond just importing it here instead of in
 // main.ts/voiceCommands.ts.
 //
+// 2026-11-06: Voice Commands collapsed to the Small model only (see
+// voiceModels.ts's own header) — the model itself never changes mid-run
+// anymore, only the grammar (strict-vocabulary word list), so the model
+// load/reload branching this file used to need is gone.
+//
 // Messages in (from voiceCommands.ts, via Worker#postMessage):
-//   { type: 'configure', modelDir, size, grammar }  — (re)build model/recognizer if needed
-//   { type: 'frame', buffer: ArrayBuffer }           — one 16kHz mono PCM16 chunk
-//   { type: 'teardown' }                             — free everything, used on disable
+//   { type: 'configure', modelDir, grammar }  — (re)build recognizer if needed
+//   { type: 'frame', buffer: ArrayBuffer }     — one 16kHz mono PCM16 chunk
+//   { type: 'teardown' }                       — free everything, used on disable
 // Messages out (via parentPort.postMessage):
 //   { type: 'partial', raw } | { type: 'final', raw } | { type: 'error', message }
 import { parentPort } from 'node:worker_threads';
@@ -48,19 +53,14 @@ import vosk from 'vosk-koffi';
 vosk.setLogLevel(-1);
 
 let model: InstanceType<typeof vosk.Model> | null = null;
-let modelLoadedSize: string | null = null;
 let recognizer: InstanceType<typeof vosk.Recognizer> | null = null;
 let recognizerKey = '';
 
-function ensureRecognizer(modelDir: string, size: string, grammar: string[] | undefined): void {
-  const key = `${size}:${JSON.stringify(grammar)}`;
+function ensureRecognizer(modelDir: string, grammar: string[] | undefined): void {
+  const key = JSON.stringify(grammar);
   if (recognizer && key === recognizerKey) return;
 
-  if (!model || modelLoadedSize !== size) {
-    model?.free();
-    model = new vosk.Model(modelDir);
-    modelLoadedSize = size;
-  }
+  if (!model) model = new vosk.Model(modelDir);
   recognizer?.free();
   recognizer = grammar
     ? new vosk.Recognizer({ model, sampleRate: 16000, grammar })
@@ -72,13 +72,13 @@ function ensureRecognizer(modelDir: string, size: string, grammar: string[] | un
 
 function teardown(): void {
   recognizer?.free(); recognizer = null; recognizerKey = '';
-  model?.free(); model = null; modelLoadedSize = null;
+  model?.free(); model = null;
 }
 
 parentPort?.on('message', (msg: any) => {
   try {
     if (msg?.type === 'configure') {
-      ensureRecognizer(msg.modelDir, msg.size, msg.grammar);
+      ensureRecognizer(msg.modelDir, msg.grammar);
       return;
     }
     if (msg?.type === 'frame') {

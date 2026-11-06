@@ -22,10 +22,9 @@ import { Worker } from 'node:worker_threads';
 import path from 'node:path';
 import { loadConfig } from './store';
 import { fetchVoicePhrases, reportVoiceTrigger } from './api';
-import { MODEL_SOURCES, modelDirFor, isModelReady, downloadModel, type VoiceModelSize } from './voiceModels';
+import { modelDir, isModelReady, downloadModel } from './voiceModels';
 
-export type { VoiceModelSize };
-export { MODEL_SOURCES, isModelReady };
+export { isModelReady };
 
 export interface VoicePhrase {
   id: string;
@@ -119,12 +118,12 @@ function buildGrammar(strict: boolean, phrases: VoicePhrase[], recognitionWords:
 // it's actually done loading, same ordering the old synchronous version had
 // — the difference is Electron's main process is free to do everything
 // else while that happens now, instead of being frozen for it.
-function ensureRecognizerConfigured(size: VoiceModelSize, strict: boolean, phrases: VoicePhrase[], recognitionWords: string[]): void {
+function ensureRecognizerConfigured(strict: boolean, phrases: VoicePhrase[], recognitionWords: string[]): void {
   const grammar = buildGrammar(strict, phrases, recognitionWords);
-  const key = `${size}:${JSON.stringify(grammar)}`;
+  const key = JSON.stringify(grammar);
   if (key === workerConfigKey) return;
   workerConfigKey = key;
-  getWorker().postMessage({ type: 'configure', modelDir: modelDirFor(size), size, grammar });
+  getWorker().postMessage({ type: 'configure', modelDir: modelDir(), grammar });
 }
 
 // ── Phrase list (polled from the website — rules are authored on either the
@@ -253,7 +252,7 @@ export async function handleAudioFrame(buffer: Buffer): Promise<void> {
   // fixed (this always re-checks the key); what's NEW in this pass is that
   // the (re)configure + decode work itself no longer blocks this process.
   try {
-    ensureRecognizerConfigured(cfg.voiceModelSize, cfg.voiceStrictVocabulary, phrases, cfg.voiceRecognitionWords);
+    ensureRecognizerConfigured(cfg.voiceStrictVocabulary, phrases, cfg.voiceRecognitionWords);
   } catch (err: any) {
     console.error('[voice] recognizer configure failed:', err?.message || err);
     return;
@@ -261,14 +260,14 @@ export async function handleAudioFrame(buffer: Buffer): Promise<void> {
   getWorker().postMessage({ type: 'frame', buffer: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) });
 }
 
-// Re-configures the worker's recognizer on its next frame if the model
-// size, vocabulary mode, or recognition words changed — called by main.ts's IPC handlers
+// Re-configures the worker's recognizer on its next frame if the vocabulary
+// mode or recognition words changed — called by main.ts's IPC handlers
 // whenever a setting actually changes, rather than polling for drift.
 export function invalidateRecognizer(): void {
   workerConfigKey = '';
 }
 
-export async function ensureModelDownloaded(size: VoiceModelSize, onProgress: (pct: number) => void): Promise<void> {
-  if (isModelReady(size)) { onProgress(100); return; }
-  await downloadModel(size, onProgress);
+export async function ensureModelDownloaded(onProgress: (pct: number) => void): Promise<void> {
+  if (isModelReady()) { onProgress(100); return; }
+  await downloadModel(onProgress);
 }

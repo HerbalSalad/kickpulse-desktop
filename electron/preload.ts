@@ -211,19 +211,20 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
   // actually cross into the main process.
   voice: {
     getSettings: (): Promise<{
-      enabled: boolean; inputDeviceId: string | null; modelSize: 'small' | 'medium' | 'large' | 'xlarge';
+      enabled: boolean; inputDeviceId: string | null;
       strictVocabulary: boolean; recognitionWords: string[]; liveCaptionsEnabled: boolean;
       captionsModel: 'base' | 'small';
     }> => ipcRenderer.invoke('voice:get-settings'),
     setEnabled: (enabled: boolean): Promise<{ ok: boolean; needsModelDownload?: boolean }> => ipcRenderer.invoke('voice:set-enabled', enabled),
     setInputDevice: (deviceId: string | null): Promise<{ ok: boolean }> => ipcRenderer.invoke('voice:set-input-device', deviceId),
-    setModelSize: (size: 'small' | 'medium' | 'large' | 'xlarge'): Promise<{ ok: boolean }> => ipcRenderer.invoke('voice:set-model-size', size),
     setStrictVocabulary: (strict: boolean): Promise<{ ok: boolean }> => ipcRenderer.invoke('voice:set-strict-vocabulary', strict),
     setRecognitionWords: (words: string[]): Promise<{ ok: boolean }> => ipcRenderer.invoke('voice:set-recognition-words', words),
     setLiveCaptionsEnabled: (enabled: boolean): Promise<{ ok: boolean }> => ipcRenderer.invoke('voice:set-live-captions-enabled', enabled),
-    isModelReady: (size: 'small' | 'medium' | 'large' | 'xlarge'): Promise<boolean> => ipcRenderer.invoke('voice:is-model-ready', size),
-    downloadModel: (size: 'small' | 'medium' | 'large' | 'xlarge'): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke('voice:download-model', size),
+    // Only one Vosk model exists now (Small — see electron/voiceModels.ts),
+    // so these take no size argument any more.
+    isModelReady: (): Promise<boolean> => ipcRenderer.invoke('voice:is-model-ready'),
+    downloadModel: (): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('voice:download-model'),
     onDownloadProgress: (cb: (pct: number) => void) => {
       ipcRenderer.removeAllListeners('voice:download-progress');
       ipcRenderer.on('voice:download-progress', (_e, pct: number) => cb(pct));
