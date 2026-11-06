@@ -34,7 +34,11 @@
         {
           "target": "nsis"
         }
-      ]
+      ],
+      "signtoolOptions": {
+        "sign": "./scripts/sign-windows.js",
+        "signingHashAlgorithms": ["sha256"]
+      }
     },
     "nsis": {
       "oneClick": false,
