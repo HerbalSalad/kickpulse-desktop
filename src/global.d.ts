@@ -81,9 +81,13 @@ declare global {
     voiceStrictVocabulary: boolean;
     voiceRecognitionWords: string[];
     voiceLiveCaptionsEnabled: boolean;
+    voiceCaptionsModel: WhisperModelKey;
   }
 
   type VoiceModelSize = 'small' | 'medium' | 'large' | 'xlarge';
+  // whisper.cpp model powering Live Captions specifically — see
+  // electron/whisperModels.ts. Independent of VoiceModelSize (Vosk) above.
+  type WhisperModelKey = 'base' | 'small';
   interface VoicePhraseInfo {
     id: string;
     phrase: string;
@@ -416,6 +420,7 @@ declare global {
         getSettings: () => Promise<{
           enabled: boolean; inputDeviceId: string | null; modelSize: VoiceModelSize;
           strictVocabulary: boolean; recognitionWords: string[]; liveCaptionsEnabled: boolean;
+          captionsModel: WhisperModelKey;
         }>;
         setEnabled: (enabled: boolean) => Promise<{ ok: boolean; needsModelDownload?: boolean }>;
         setInputDevice: (deviceId: string | null) => Promise<{ ok: boolean }>;
@@ -426,6 +431,10 @@ declare global {
         isModelReady: (size: VoiceModelSize) => Promise<boolean>;
         downloadModel: (size: VoiceModelSize) => Promise<{ ok: boolean; error?: string }>;
         onDownloadProgress: (cb: (pct: number) => void) => void;
+        setCaptionsModel: (key: WhisperModelKey) => Promise<{ ok: boolean }>;
+        isWhisperModelReady: (key: WhisperModelKey) => Promise<boolean>;
+        downloadWhisperModel: (key: WhisperModelKey) => Promise<{ ok: boolean; error?: string }>;
+        onDownloadWhisperProgress: (cb: (pct: number) => void) => void;
         getHeardLog: () => Promise<{ text: string; confidence: number; matchedPhrase: string | null; at: number }[]>;
         getLivePartial: () => Promise<string>;
         getPhrases: () => Promise<VoicePhraseInfo[]>;

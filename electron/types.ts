@@ -95,6 +95,12 @@ export interface DesktopConfig {
   // this is explicitly turned on, separate from Voice Commands itself being
   // on.
   voiceLiveCaptionsEnabled: boolean;
+  // voiceCaptionsModel (2026-11-06) — which whisper.cpp ggml model powers
+  // Live Captions specifically, independent of voiceModelSize above (Vosk,
+  // used for actual Voice Command matching only — see
+  // electron/whisperCaptions.ts's header for why captions moved to a
+  // separate engine entirely). See electron/whisperModels.ts.
+  voiceCaptionsModel: 'base' | 'small';
 }
 
 export type LightProvider = 'wled' | 'hue' | 'govee' | 'elgato';

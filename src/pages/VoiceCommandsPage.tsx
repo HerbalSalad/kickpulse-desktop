@@ -47,6 +47,20 @@ const MODEL_OPTIONS: { value: VoiceModelSize; label: string; hint: string }[] = 
   { value: 'xlarge', label: 'Extra Large', hint: '~2.3GB — most accurate, slowest' },
 ];
 
+// Live Captions runs on a separate engine (whisper.cpp, not Vosk — see
+// electron/whisperCaptions.ts) specifically because Vosk's grammar is the
+// wrong tool for open-vocabulary speech: "strict" mode only hears your own
+// bound phrases, "open" mode is noticeably inaccurate on arbitrary speech.
+// These two options are the real survivors of a 6-model benchmark (base
+// through large-v3-turbo, timed + accuracy-checked) — medium and
+// large-v3-turbo both came back slower than real time on this hardware
+// (9-18s of CPU time per ~10s of speech), so they're not offered here at
+// all even though whisper.cpp supports them.
+const CAPTIONS_MODEL_OPTIONS: { value: WhisperModelKey; label: string; hint: string }[] = [
+  { value: 'base', label: 'Base (fast)', hint: '~57MB — lowest CPU cost, misses less-common names/words more often' },
+  { value: 'small', label: 'Small (accurate)', hint: '~465MB — still comfortably faster than real time, noticeably better at names/brands/usernames' },
+];
+
 export default function VoiceCommandsPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [apiKeyReady, setApiKeyReady] = useState(false);
@@ -61,6 +75,9 @@ export default function VoiceCommandsPage() {
   const [liveCaptionsEnabled, setLiveCaptionsEnabled] = useState(false);
   const [modelReady, setModelReady] = useState<boolean | null>(null);
   const [downloadPct, setDownloadPct] = useState<number | null>(null);
+  const [captionsModel, setCaptionsModel] = useState<WhisperModelKey>('small');
+  const [captionsModelReady, setCaptionsModelReady] = useState<boolean | null>(null);
+  const [captionsDownloadPct, setCaptionsDownloadPct] = useState<number | null>(null);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   useEffect(() => {
@@ -79,6 +96,7 @@ export default function VoiceCommandsPage() {
       setStrictVocabulary(s.strictVocabulary);
       setRecognitionWordsText(s.recognitionWords.join('\n'));
       setLiveCaptionsEnabled(s.liveCaptionsEnabled);
+      setCaptionsModel(s.captionsModel);
       setSettingsLoaded(true);
     })();
   }, []);
@@ -87,6 +105,11 @@ export default function VoiceCommandsPage() {
     if (!settingsLoaded) return;
     window.kickpulseDesktop.voice.isModelReady(modelSize).then(setModelReady);
   }, [settingsLoaded, modelSize]);
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    window.kickpulseDesktop.voice.isWhisperModelReady(captionsModel).then(setCaptionsModelReady);
+  }, [settingsLoaded, captionsModel]);
 
   const refreshDevices = async () => {
     try {
@@ -147,6 +170,20 @@ export default function VoiceCommandsPage() {
   const changeLiveCaptions = async (v: boolean) => {
     setLiveCaptionsEnabled(v);
     await window.kickpulseDesktop.voice.setLiveCaptionsEnabled(v);
+  };
+
+  const changeCaptionsModel = async (key: WhisperModelKey) => {
+    setCaptionsModel(key);
+    await window.kickpulseDesktop.voice.setCaptionsModel(key);
+  };
+
+  const downloadCaptionsModel = async () => {
+    setCaptionsDownloadPct(0);
+    window.kickpulseDesktop.voice.onDownloadWhisperProgress(setCaptionsDownloadPct);
+    const result = await window.kickpulseDesktop.voice.downloadWhisperModel(captionsModel);
+    setCaptionsDownloadPct(null);
+    if (!result.ok) { alert(`Download failed: ${result.error}`); return; }
+    setCaptionsModelReady(true);
   };
 
   // ── In-app live monitor ──────────────────────────────────────────────────
@@ -374,6 +411,19 @@ export default function VoiceCommandsPage() {
           <Section title="Live Captions" right={<span style={{ fontSize: 12, color: COLORS.textFaint }}>on-stream OBS widget</span>}>
             <Row label="Stream to widget" hint="Sends recognized text to your Live Captions OBS widget, if you've added one. Separate from Voice Commands matching itself.">
               <Toggle checked={liveCaptionsEnabled} onChange={changeLiveCaptions} />
+            </Row>
+            <Row label="Engine" hint="Captions run on a different, more accurate engine than Voice Commands above (whisper.cpp instead of Vosk) — Vosk's grammar is the wrong tool for hearing arbitrary speech. Captions arrive in short batches a few seconds behind, not word-by-word — a real, accepted tradeoff of this engine, not a bug.">
+              <Select value={captionsModel} onChange={(v) => changeCaptionsModel(v as WhisperModelKey)}
+                options={CAPTIONS_MODEL_OPTIONS.map((m) => ({ value: m.value, label: `${m.label} — ${m.hint}` }))} />
+            </Row>
+            <Row label="Status">
+              {captionsDownloadPct != null ? (
+                <span style={{ color: COLORS.textDim }}>Downloading… {captionsDownloadPct}%</span>
+              ) : captionsModelReady ? (
+                <span style={{ color: COLORS.success }}>Downloaded, ready to use</span>
+              ) : (
+                <Button onClick={downloadCaptionsModel}><Download size={14} />Download {CAPTIONS_MODEL_OPTIONS.find((m) => m.value === captionsModel)?.label} model</Button>
+              )}
             </Row>
           </Section>
         </>

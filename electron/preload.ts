@@ -213,6 +213,7 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
     getSettings: (): Promise<{
       enabled: boolean; inputDeviceId: string | null; modelSize: 'small' | 'medium' | 'large' | 'xlarge';
       strictVocabulary: boolean; recognitionWords: string[]; liveCaptionsEnabled: boolean;
+      captionsModel: 'base' | 'small';
     }> => ipcRenderer.invoke('voice:get-settings'),
     setEnabled: (enabled: boolean): Promise<{ ok: boolean; needsModelDownload?: boolean }> => ipcRenderer.invoke('voice:set-enabled', enabled),
     setInputDevice: (deviceId: string | null): Promise<{ ok: boolean }> => ipcRenderer.invoke('voice:set-input-device', deviceId),
@@ -226,6 +227,17 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
     onDownloadProgress: (cb: (pct: number) => void) => {
       ipcRenderer.removeAllListeners('voice:download-progress');
       ipcRenderer.on('voice:download-progress', (_e, pct: number) => cb(pct));
+    },
+    // Live Captions' own whisper.cpp model (2026-11-06) — separate download/
+    // readiness/progress trio from Vosk's above, since it's a genuinely
+    // different engine/model format. See electron/whisperModels.ts.
+    setCaptionsModel: (key: 'base' | 'small'): Promise<{ ok: boolean }> => ipcRenderer.invoke('voice:set-captions-model', key),
+    isWhisperModelReady: (key: 'base' | 'small'): Promise<boolean> => ipcRenderer.invoke('voice:is-whisper-model-ready', key),
+    downloadWhisperModel: (key: 'base' | 'small'): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('voice:download-whisper-model', key),
+    onDownloadWhisperProgress: (cb: (pct: number) => void) => {
+      ipcRenderer.removeAllListeners('voice:download-whisper-progress');
+      ipcRenderer.on('voice:download-whisper-progress', (_e, pct: number) => cb(pct));
     },
     getHeardLog: (): Promise<{ text: string; confidence: number; matchedPhrase: string | null; at: number }[]> =>
       ipcRenderer.invoke('voice:get-heard-log'),

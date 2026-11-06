@@ -31,6 +31,7 @@ const DEFAULTS: DesktopConfig = {
   voiceStrictVocabulary: false,
   voiceRecognitionWords: [],
   voiceLiveCaptionsEnabled: false,
+  voiceCaptionsModel: 'small',
 };
 
 function configPath(): string {

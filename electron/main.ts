@@ -61,6 +61,8 @@ import {
   getHeardLog, getCachedPhrases, getLivePartialText, invalidateRecognizer, ensureModelDownloaded,
   isModelReady, type VoiceModelSize,
 } from './voiceCommands';
+import { configureWhisperCaptions, setWhisperCaptionsEnabled } from './whisperCaptions';
+import { isWhisperModelReady, downloadWhisperModel, type WhisperModelKey } from './whisperModels';
 import type {
   JumpscarePayload, DesktopStatus, JumpscareConfigResponse, MediaServerInfo,
   ScenesConfigResponse,
@@ -1104,6 +1106,7 @@ app.whenReady().then(async () => {
       enabled: cfg.voiceEnabled, inputDeviceId: cfg.voiceInputDeviceId,
       modelSize: cfg.voiceModelSize, strictVocabulary: cfg.voiceStrictVocabulary,
       recognitionWords: cfg.voiceRecognitionWords, liveCaptionsEnabled: cfg.voiceLiveCaptionsEnabled,
+      captionsModel: cfg.voiceCaptionsModel,
     };
   });
   ipcMain.handle('voice:set-enabled', (_e, enabled: boolean) => setVoiceEnabled(enabled));
@@ -1129,12 +1132,29 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('voice:set-live-captions-enabled', (_e, enabled: boolean) => {
     saveConfig({ voiceLiveCaptionsEnabled: enabled });
+    setWhisperCaptionsEnabled(enabled);
     return { ok: true };
   });
   ipcMain.handle('voice:is-model-ready', (_e, size: VoiceModelSize) => isModelReady(size));
   ipcMain.handle('voice:download-model', async (e, size: VoiceModelSize) => {
     try {
       await ensureModelDownloaded(size, (pct) => e.sender.send('voice:download-progress', pct));
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  });
+  // ----- Live Captions model (whisper.cpp, separate from Voice Commands'
+  // own Vosk model above — see electron/whisperCaptions.ts) -----
+  ipcMain.handle('voice:set-captions-model', (_e, key: WhisperModelKey) => {
+    saveConfig({ voiceCaptionsModel: key });
+    configureWhisperCaptions(key);
+    return { ok: true };
+  });
+  ipcMain.handle('voice:is-whisper-model-ready', (_e, key: WhisperModelKey) => isWhisperModelReady(key));
+  ipcMain.handle('voice:download-whisper-model', async (e, key: WhisperModelKey) => {
+    try {
+      await downloadWhisperModel(key, (pct) => e.sender.send('voice:download-whisper-progress', pct));
       return { ok: true };
     } catch (err: any) {
       return { ok: false, error: err?.message || String(err) };

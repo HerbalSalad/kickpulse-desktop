@@ -10,14 +10,18 @@
 // API) and streams raw 16kHz mono PCM frames up over IPC to THIS file
 // (still running in the main process) — which now just forwards each frame
 // into the worker and reacts to its results; the grammar/word-list
-// building, per-phrase matching, cooldowns, caption reporting, and the
-// heard-log all stay here unchanged, since none of that is the expensive
-// blocking part.
+// building, per-phrase matching, cooldowns, and the heard-log all stay
+// here unchanged, since none of that is the expensive blocking part.
+// Live Captions reporting used to live here too — moved entirely to
+// electron/whisperCaptions.ts (2026-11-06, direct report: "vosk is SHIT for
+// captions") since Vosk's grammar is fundamentally the wrong tool for open
+// vocabulary (strict mode is phrase-constrained; open mode is inaccurate).
+// This file is Voice COMMANDS only now, matching its own filename.
 import { app } from 'electron';
 import { Worker } from 'node:worker_threads';
 import path from 'node:path';
 import { loadConfig } from './store';
-import { fetchVoicePhrases, reportVoiceTrigger, reportVoiceCaption } from './api';
+import { fetchVoicePhrases, reportVoiceTrigger } from './api';
 import { MODEL_SOURCES, modelDirFor, isModelReady, downloadModel, type VoiceModelSize } from './voiceModels';
 
 export type { VoiceModelSize };
@@ -68,7 +72,6 @@ function handleWorkerMessage(msg: any): void {
     const partial = msg.raw?.partial || '';
     if (partial && partial !== livePartialText) {
       livePartialText = partial;
-      maybeReportCaption(partial, false);
       checkMatches(partial, 0, false, false);
     }
     return;
@@ -80,7 +83,6 @@ function handleWorkerMessage(msg: any): void {
       const confidencePct = avgConfidencePct(words);
       const matchedPhrase = checkMatches(text, confidencePct, true, true);
       heardLog = [{ text, confidence: confidencePct, matchedPhrase, at: Date.now() }, ...heardLog].slice(0, MAX_HEARD_LOG);
-      maybeReportCaption(text, true);
     }
     return;
   }
@@ -225,19 +227,10 @@ function extractFlat(raw: any): { text: string; words: { word: string; conf?: nu
   return { text: r?.text || '', words: Array.isArray(r?.result) ? r.result : [] };
 }
 
-// ── Live captions (both the in-app monitor AND the on-stream widget read
-// off this same data — the widget via reportVoiceCaption below, gated on
-// the desktop's own Live Captions toggle so nothing is sent for a streamer
-// who never added that widget) ──────────────────────────────────────────
-let _lastSentCaption = '';
-function maybeReportCaption(text: string, isFinal: boolean): void {
-  if (!loadConfig().voiceLiveCaptionsEnabled) return;
-  if (!text || text === _lastSentCaption) return;
-  _lastSentCaption = text;
-  const apiKey = loadConfig().apiKey;
-  if (!apiKey) return;
-  reportVoiceCaption(apiKey, text, isFinal).catch(() => {});
-}
+// Live Captions reporting moved OFF this Vosk pipeline entirely (2026-11-06)
+// — see electron/whisperCaptions.ts's own header for why. This file now
+// does ONLY what its own header already promises: phrase matching +
+// heard-log, nothing else.
 
 // ── The real entry point — called by main.ts for every raw PCM frame the
 // hidden listener window streams up (16-bit mono 16kHz, matching how
