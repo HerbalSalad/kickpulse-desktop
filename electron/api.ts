@@ -163,6 +163,34 @@ export function reportObsFilters(apiKey: string, filters: { sourceName: string; 
   });
 }
 
+// reportObzidianState/reportObzidianSources/reportObzidianFilters — same
+// shape/reasoning as reportObsState/reportObsSources/reportObsFilters
+// above, for streamers using Obzidian instead of OBS (2026-11-08). Obzidian
+// scenes/sources/filters are named exactly like OBS's own (same real
+// obs-websocket v5 protocol — see electron/obzidian-client.ts), so these
+// report to their own separate /desktop/obzidian-*-state endpoints rather
+// than being mixed into OBS's own picker data.
+export function reportObzidianState(apiKey: string, scenes: { sceneName: string }[]): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/desktop/obzidian-state', apiKey, {
+    method: 'POST',
+    body: JSON.stringify({ scenes }),
+  });
+}
+
+export function reportObzidianSources(apiKey: string, sources: { sceneName: string; sourceName: string }[]): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/desktop/obzidian-sources-state', apiKey, {
+    method: 'POST',
+    body: JSON.stringify({ sources }),
+  });
+}
+
+export function reportObzidianFilters(apiKey: string, filters: { sourceName: string; filterName: string }[]): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/desktop/obzidian-filters-state', apiKey, {
+    method: 'POST',
+    body: JSON.stringify({ filters }),
+  });
+}
+
 // reportMeldState/reportMeldLayers — same shape/reasoning as
 // reportObsState/reportObsSources above, for streamers using Meld Studio
 // instead of OBS (2026-10-25).

@@ -45,7 +45,12 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('obs-websocket-js', () => ({
+// Mocks the '/json' subpath specifically — obsProtocolClient.ts's real
+// import() targets that exact specifier (not the bare package name) as of
+// the 2026-11-09 msgpack/json subprotocol fix (see that file's own header
+// comment), so this has to match it exactly or the mock silently stops
+// intercepting and the test hits a real network call instead.
+vi.mock('obs-websocket-js/json', () => ({
   default: class {
     constructor() {
       const inst = new mocks.FakeOBS();

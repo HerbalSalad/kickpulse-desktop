@@ -61,6 +61,31 @@ export interface PulseAction {
   obsFilterEnabled?: boolean;
   obsFilterMomentary?: boolean;
   obsFilterHoldMs?: number;
+  // obzidian_switch_scene/obzidian_toggle_source/obzidian_toggle_filter
+  // (2026-11-09 — porting the website's own already-working Obzidian
+  // support into this app's native editor; see PulseActionEditor.tsx's own
+  // header for why this file has to be kept in sync by hand). Field names
+  // match routes/pulseRules.js's obzidian_* cases on the website exactly —
+  // same server-side runAction(), just a different connected tool.
+  obzidianSceneName?: string;
+  obzidianSourceScene?: string;
+  obzidianSourceName?: string;
+  obzidianSourceVisible?: boolean;
+  obzidianFilterSource?: string;
+  obzidianFilterName?: string;
+  obzidianFilterEnabled?: boolean;
+  obzidianFilterMomentary?: boolean;
+  obzidianFilterHoldMs?: number;
+  // obzidian_start_record/obzidian_stop_record/obzidian_start_replay_buffer/
+  // obzidian_stop_replay_buffer/obzidian_save_replay_buffer (2026-11-09,
+  // direct request: "whether or not we can take just horizontal or just
+  // vertical clips", then "I should be able to take a clip with both
+  // vertical and horizontal... horizontal is useful for replay and I
+  // typically use vertical for clips") — 'h'/'v' targets that canvas
+  // regardless of which one is active in Obzidian; 'both' drives h AND v
+  // together in one action; blank/undefined keeps the old "whichever is
+  // active" behavior.
+  obzidianCanvasKey?: 'h' | 'v' | 'both';
   meldSceneId?: string;
   meldLayerSceneId?: string;
   meldLayerId?: string;
@@ -135,6 +160,20 @@ export const ACTION_DEFS: { type: string; label: string; hint: string }[] = [
   { type: 'obs_start_aitum_backtrack', label: '🟢 Start Backtrack (Aitum Vertical)', hint: 'Starts Aitum Vertical\'s own replay buffer — requires the Aitum Vertical OBS plugin' },
   { type: 'obs_stop_aitum_backtrack',  label: '🔴 Stop Backtrack (Aitum Vertical)',  hint: 'Stops Aitum Vertical\'s own replay buffer — requires the Aitum Vertical OBS plugin' },
   { type: 'obs_save_aitum_backtrack',  label: '🎞 Save Backtrack (Aitum Vertical)',  hint: 'Saves Aitum Vertical\'s own backtrack clip right now — requires the Aitum Vertical OBS plugin' },
+  // Obzidian (2026-11-09) — same shape as the obs_* block above, for
+  // streamers using Obzidian (kickpulse-streamer-qt) instead of OBS.
+  // Deliberately no obzidian_*_aitum_backtrack equivalents — Aitum Vertical
+  // is a real OBS plugin with no Obzidian equivalent at all.
+  { type: 'obzidian_switch_scene',   label: '🎬 Switch Obzidian Scene',    hint: 'Switches Obzidian to this scene right now' },
+  { type: 'obzidian_start_stream',   label: '🔴 Start Streaming (Obzidian)', hint: 'Starts streaming in Obzidian' },
+  { type: 'obzidian_stop_stream',    label: '⏹ Stop Streaming (Obzidian)',  hint: 'Stops streaming in Obzidian' },
+  { type: 'obzidian_start_record',   label: '⏺ Start Recording (Obzidian)', hint: 'Starts recording in Obzidian' },
+  { type: 'obzidian_stop_record',    label: '⏹ Stop Recording (Obzidian)',  hint: 'Stops recording in Obzidian' },
+  { type: 'obzidian_toggle_source',  label: '👁 Show/Hide Obzidian Source', hint: 'Shows/hides a specific source inside a specific scene' },
+  { type: 'obzidian_toggle_filter',  label: '🎛 Toggle Obzidian Filter', hint: 'Enable/disable a filter on a source, or flash it on briefly' },
+  { type: 'obzidian_start_replay_buffer', label: '🟢 Start Replay Buffer (Obzidian)', hint: 'Starts the replay buffer in Obzidian' },
+  { type: 'obzidian_stop_replay_buffer',  label: '🔴 Stop Replay Buffer (Obzidian)',  hint: 'Stops the replay buffer in Obzidian' },
+  { type: 'obzidian_save_replay_buffer',  label: '🎞 Save Clip (Obzidian Replay Buffer)', hint: 'Saves the last few minutes to disk right now — e.g. bind this to a !clip chat command' },
   { type: 'meld_switch_scene',  label: '🎬 Switch Meld Scene',    hint: 'Switches Meld Studio to this scene right now' },
   { type: 'meld_start_stream',  label: '🔴 Start Streaming (Meld)', hint: 'Starts streaming in Meld Studio' },
   { type: 'meld_stop_stream',   label: '⏹ Stop Streaming (Meld)',  hint: 'Stops streaming in Meld Studio' },
@@ -303,6 +342,9 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
   const [obsScenes, setObsScenes] = useState<TargetOption[]>([]);
   const [obsSources, setObsSources] = useState<TargetOption[]>([]);
   const [obsFilters, setObsFilters] = useState<TargetOption[]>([]);
+  const [obzidianScenes, setObzidianScenes] = useState<TargetOption[]>([]);
+  const [obzidianSources, setObzidianSources] = useState<TargetOption[]>([]);
+  const [obzidianFilters, setObzidianFilters] = useState<TargetOption[]>([]);
   const [meldScenes, setMeldScenes] = useState<TargetOption[]>([]);
   const [meldLayers, setMeldLayers] = useState<TargetOption[]>([]);
   const [meldEffects, setMeldEffects] = useState<TargetOption[]>([]);
@@ -356,6 +398,21 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
       setObsScenes(s.scenes.map((sc) => ({ id: sc.sceneUuid, name: sc.sceneName })));
       setObsSources(s.sources.map((src) => ({ id: `${src.sceneName}\u001f${src.sourceName}`, name: `${src.sourceName} — in ${src.sceneName}` })));
       setObsFilters((s.filters ?? []).map((f) => ({ id: `${f.sourceName}\u001f${f.filterName}`, name: `${f.filterName} — on ${f.sourceName}` })));
+    });
+  }, []);
+
+  // Obzidian scenes/sources/filters (2026-11-09) — same "already have this
+  // data locally and live" reasoning as the OBS block right above.
+  useEffect(() => {
+    window.kickpulseDesktop.obzidianGetStatus().then((s) => {
+      setObzidianScenes(s.scenes.map((sc) => ({ id: sc.sceneUuid, name: sc.sceneName })));
+      setObzidianSources(s.sources.map((src) => ({ id: `${src.sceneName}\u001f${src.sourceName}`, name: `${src.sourceName} — in ${src.sceneName}` })));
+      setObzidianFilters((s.filters ?? []).map((f) => ({ id: `${f.sourceName}\u001f${f.filterName}`, name: `${f.filterName} — on ${f.sourceName}` })));
+    }).catch(() => {});
+    window.kickpulseDesktop.onObzidianStatus((s) => {
+      setObzidianScenes(s.scenes.map((sc) => ({ id: sc.sceneUuid, name: sc.sceneName })));
+      setObzidianSources(s.sources.map((src) => ({ id: `${src.sceneName}\u001f${src.sourceName}`, name: `${src.sourceName} — in ${src.sceneName}` })));
+      setObzidianFilters((s.filters ?? []).map((f) => ({ id: `${f.sourceName}\u001f${f.filterName}`, name: `${f.filterName} — on ${f.sourceName}` })));
     });
   }, []);
 
@@ -708,6 +765,83 @@ export default function PulseActionEditor({ actions, onChange, userId, rowLabel 
                 )}
                 <span style={{ fontSize: 11, color: '#6b7280' }}>
                   {obsFilters.length > 0 ? 'Live from your connected OBS — Settings → Broadcast Software' : 'Connect OBS in Settings → Broadcast Software to pick from a real filter list, or type the exact source/filter names now'}
+                </span>
+              </div>
+            )}
+            {a.type === 'obzidian_switch_scene' && (
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {obzidianScenes.length > 0 ? (
+                    <Select value={a.obzidianSceneName ?? ''} onChange={(v) => setAction(idx, { obzidianSceneName: v || undefined })}
+                      options={[{ value: '', label: 'pick a scene…' }, ...obzidianScenes.map(s => ({ value: s.name, label: s.name }))]} style={{ width: 220 }} />
+                  ) : (
+                    <TextInput value={a.obzidianSceneName ?? ''} onChange={(v) => setAction(idx, { obzidianSceneName: v })} placeholder="exact Obzidian scene name" style={{ width: 220 }} />
+                  )}
+                </div>
+                <span style={{ fontSize: 11, color: '#6b7280' }}>
+                  {obzidianScenes.length > 0 ? 'Live from your connected Obzidian — Settings → Remote Control' : 'Connect Obzidian in Settings → Remote Control to pick from a real scene list, or type the exact scene name now'}
+                </span>
+              </div>
+            )}
+            {a.type === 'obzidian_toggle_source' && (
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  {obzidianSources.length > 0 ? (
+                    <Select
+                      value={a.obzidianSourceScene && a.obzidianSourceName ? `${a.obzidianSourceScene}\u001f${a.obzidianSourceName}` : ''}
+                      onChange={(v) => { const [sceneName, sourceName] = v.split('\u001f'); setAction(idx, { obzidianSourceScene: sceneName || undefined, obzidianSourceName: sourceName || undefined }); }}
+                      options={[{ value: '', label: 'pick a source…' }, ...obzidianSources.map(s => ({ value: s.id, label: s.name }))]} style={{ width: 240 }} />
+                  ) : (
+                    <>
+                      <TextInput value={a.obzidianSourceScene ?? ''} onChange={(v) => setAction(idx, { obzidianSourceScene: v })} placeholder="exact scene name" style={{ width: 160 }} />
+                      <TextInput value={a.obzidianSourceName ?? ''} onChange={(v) => setAction(idx, { obzidianSourceName: v })} placeholder="exact source name" style={{ width: 160 }} />
+                    </>
+                  )}
+                  <Select value={a.obzidianSourceVisible === undefined ? '' : String(a.obzidianSourceVisible)}
+                    onChange={(v) => setAction(idx, { obzidianSourceVisible: v === '' ? undefined : v === 'true' })}
+                    options={[{ value: '', label: 'Toggle (flip current state)' }, { value: 'true', label: 'Show' }, { value: 'false', label: 'Hide' }]} style={{ width: 180 }} />
+                </div>
+                <span style={{ fontSize: 11, color: '#6b7280' }}>
+                  {obzidianSources.length > 0 ? 'Live from your connected Obzidian — Settings → Remote Control' : 'Connect Obzidian in Settings → Remote Control to pick from a real source list, or type the exact scene/source names now'}
+                </span>
+              </div>
+            )}
+            {a.type === 'obzidian_toggle_filter' && (
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  {obzidianFilters.length > 0 ? (
+                    <Select
+                      value={a.obzidianFilterSource && a.obzidianFilterName ? `${a.obzidianFilterSource}\u001f${a.obzidianFilterName}` : ''}
+                      onChange={(v) => { const [sourceName, filterName] = v.split('\u001f'); setAction(idx, { obzidianFilterSource: sourceName || undefined, obzidianFilterName: filterName || undefined }); }}
+                      options={[{ value: '', label: 'pick a filter…' }, ...obzidianFilters.map(f => ({ value: f.id, label: f.name }))]} style={{ width: 240 }} />
+                  ) : (
+                    <>
+                      <TextInput value={a.obzidianFilterSource ?? ''} onChange={(v) => setAction(idx, { obzidianFilterSource: v })} placeholder="exact source name" style={{ width: 160 }} />
+                      <TextInput value={a.obzidianFilterName ?? ''} onChange={(v) => setAction(idx, { obzidianFilterName: v })} placeholder="exact filter name" style={{ width: 160 }} />
+                    </>
+                  )}
+                  <Select value={a.obzidianFilterEnabled === undefined ? '' : String(a.obzidianFilterEnabled)}
+                    onChange={(v) => setAction(idx, { obzidianFilterEnabled: v === '' ? undefined : v === 'true' })}
+                    options={[{ value: '', label: 'Toggle (flip current state)' }, { value: 'true', label: 'Enable' }, { value: 'false', label: 'Disable' }]} style={{ width: 180 }} />
+                </div>
+                <Toggle checked={!!a.obzidianFilterMomentary} onChange={(v) => setAction(idx, { obzidianFilterMomentary: v })} label="Trigger briefly, then disable" />
+                {a.obzidianFilterMomentary && (
+                  <Row label="hold for">
+                    <NumberInput value={a.obzidianFilterHoldMs ?? 1500} min={50} onChange={(v) => setAction(idx, { obzidianFilterHoldMs: Math.max(50, v) })} style={{ width: 90 }} />
+                    <span style={{ fontSize: 12, color: '#9ca3af', marginLeft: 8 }}>ms</span>
+                  </Row>
+                )}
+                <span style={{ fontSize: 11, color: '#6b7280' }}>
+                  {obzidianFilters.length > 0 ? 'Live from your connected Obzidian — Settings → Remote Control' : 'Connect Obzidian in Settings → Remote Control to pick from a real filter list, or type the exact source/filter names now'}
+                </span>
+              </div>
+            )}
+            {['obzidian_start_record', 'obzidian_stop_record', 'obzidian_start_replay_buffer', 'obzidian_stop_replay_buffer', 'obzidian_save_replay_buffer'].includes(a.type) && (
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <Select value={a.obzidianCanvasKey ?? ''} onChange={(v) => setAction(idx, { obzidianCanvasKey: (v || undefined) as 'h' | 'v' | 'both' | undefined })}
+                  options={[{ value: '', label: 'Whichever canvas is active' }, { value: 'h', label: 'Horizontal only' }, { value: 'v', label: 'Vertical only' }, { value: 'both', label: 'Both canvases at once' }]} style={{ width: 220 }} />
+                <span style={{ fontSize: 11, color: '#6b7280' }}>
+                  Targets that canvas regardless of which one is focused in Obzidian right now — e.g. bind a "just vertical" clip to its own chat command, or "Both" to grab a horizontal replay clip and a vertical TikTok/Shorts clip from the same moment in one action.
                 </span>
               </div>
             )}

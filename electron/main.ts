@@ -24,7 +24,9 @@ import {
   summarizeKickEvent, summarizeTwitchEvent, KNOWN_KICK_EVENT_TYPES, KNOWN_TWITCH_EVENT_TYPES,
 } from './chat-feed';
 import {
-  getMe, getJumpscareConfig, getScenesConfig, reportObsState, reportObsSources, reportObsFilters, reportMeldState, reportMeldLayers, reportMeldEffects, reportLightDevices,
+  getMe, getJumpscareConfig, getScenesConfig, reportObsState, reportObsSources, reportObsFilters,
+  reportObzidianState, reportObzidianSources, reportObzidianFilters,
+  reportMeldState, reportMeldLayers, reportMeldEffects, reportLightDevices,
   reportLightScenes, reportLightReactions, reportVoiceEnabled,
   listStreamInfoPresets, createStreamInfoPreset, deleteStreamInfoPreset, applyStreamInfoPreset,
   listPulseRules, createPulseRule, updatePulseRule, deletePulseRule,
@@ -47,6 +49,7 @@ import {
 } from './api';
 import { startMediaServer } from './media-server';
 import * as obsClient from './obs-client';
+import * as obzidianClient from './obzidian-client';
 import * as meldClient from './meld-client';
 import * as lights from './lights-manager';
 import * as lightScenes from './light-scenes';
@@ -438,6 +441,38 @@ function handleWsMessage(msg: any): void {
     if (msg.event === 'obs.startAitumBacktrack') { obsClient.startAitumBacktrack().catch((err) => console.error('[obs] start Aitum backtrack failed', err?.message || err)); return; }
     if (msg.event === 'obs.stopAitumBacktrack')  { obsClient.stopAitumBacktrack().catch((err) => console.error('[obs] stop Aitum backtrack failed', err?.message || err)); return; }
     if (msg.event === 'obs.saveAitumBacktrack')  { obsClient.saveAitumBacktrack().catch((err) => console.error('[obs] save Aitum backtrack failed', err?.message || err)); return; }
+    // obzidian.* (2026-11-08) — same fire-and-forget, desktop-app-only shape
+    // as the obs.* events above, for streamers using Obzidian instead of
+    // OBS. Deliberately no obzidian.startAitumBacktrack/etc. — Aitum
+    // Vertical is a real OBS plugin with no Obzidian equivalent at all.
+    if (msg.event === 'obzidian.switchScene' && msg.payload?.sceneName) {
+      obzidianClient
+        .obzidianSwitchScene(msg.payload.sceneName)
+        .catch((err) => console.error('[obzidian] Pulse Engine scene switch failed', err?.message || err));
+      return;
+    }
+    if (msg.event === 'obzidian.startStream') { obzidianClient.obzidianStartStream().catch((err) => console.error('[obzidian] start stream failed', err?.message || err)); return; }
+    if (msg.event === 'obzidian.stopStream')  { obzidianClient.obzidianStopStream().catch((err) => console.error('[obzidian] stop stream failed', err?.message || err)); return; }
+    // canvasKey (2026-11-09) — optional; undefined (whichever canvas is
+    // active in Obzidian) unless a Pulse Engine rule explicitly picked
+    // Horizontal or Vertical (see PulseActionEditor.tsx's obzidianCanvasKey).
+    if (msg.event === 'obzidian.startRecord') { obzidianClient.obzidianStartRecord(msg.payload?.canvasKey).catch((err) => console.error('[obzidian] start record failed', err?.message || err)); return; }
+    if (msg.event === 'obzidian.stopRecord')  { obzidianClient.obzidianStopRecord(msg.payload?.canvasKey).catch((err) => console.error('[obzidian] stop record failed', err?.message || err)); return; }
+    if (msg.event === 'obzidian.toggleSource' && msg.payload?.sceneName && msg.payload?.sourceName) {
+      obzidianClient
+        .obzidianToggleSourceVisible(msg.payload.sceneName, msg.payload.sourceName, msg.payload.visible)
+        .catch((err) => console.error('[obzidian] Pulse Engine source toggle failed', err?.message || err));
+      return;
+    }
+    if (msg.event === 'obzidian.toggleFilter' && msg.payload?.sourceName && msg.payload?.filterName) {
+      obzidianClient
+        .obzidianToggleSourceFilterEnabled(msg.payload.sourceName, msg.payload.filterName, msg.payload.enabled)
+        .catch((err) => console.error('[obzidian] Pulse Engine filter toggle failed', err?.message || err));
+      return;
+    }
+    if (msg.event === 'obzidian.startReplayBuffer') { obzidianClient.obzidianStartReplayBuffer(msg.payload?.canvasKey).catch((err) => console.error('[obzidian] start replay buffer failed', err?.message || err)); return; }
+    if (msg.event === 'obzidian.stopReplayBuffer')  { obzidianClient.obzidianStopReplayBuffer(msg.payload?.canvasKey).catch((err) => console.error('[obzidian] stop replay buffer failed', err?.message || err)); return; }
+    if (msg.event === 'obzidian.saveReplayBuffer')  { obzidianClient.obzidianSaveReplayBuffer(msg.payload?.canvasKey).catch((err) => console.error('[obzidian] save replay buffer failed', err?.message || err)); return; }
     // meld.* (2026-10-25) — same fire-and-forget, desktop-app-only shape as
     // the obs.* events above, for streamers using Meld Studio instead of OBS.
     if (msg.event === 'meld.switchScene' && msg.payload?.sceneId) {
@@ -731,6 +766,20 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Obzidian (2026-11-08) — same reporting shape as the OBS hook right
+  // above, so Pulse Engine's own rule editor can offer real scene/source/
+  // filter pickers for Obzidian too, reported separately from OBS's own
+  // picker data (see api.ts's reportObzidianState/Sources/Filters).
+  obzidianClient.onObzidianStatusChange((status) => {
+    mainWindow?.webContents.send('obzidian-status-update', status);
+    const apiKey = loadConfig().apiKey;
+    if (apiKey) {
+      reportObzidianState(apiKey, status.scenes.map((s) => ({ sceneName: s.sceneName }))).catch(() => {});
+      reportObzidianSources(apiKey, status.sources).catch(() => {});
+      reportObzidianFilters(apiKey, status.filters).catch(() => {});
+    }
+  });
+
   // Meld Studio (2026-10-25) — same reporting shape as the OBS hook right
   // above, so Pulse Engine's own rule editor can offer real scene/layer
   // pickers for Meld too.
@@ -924,7 +973,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('obs:get-scene-items', (_e, sceneName: string) => obsClient.getSceneItems(sceneName));
 
-  ipcMain.handle('obs:toggle-source', async (_e, sceneName: string, sceneItemId: number, enabled: boolean) => {
+  ipcMain.handle('obs:toggle-source', async (_e, sceneName: string, sceneItemId: number | string, enabled: boolean) => {
     try {
       await obsClient.setSceneItemEnabled(sceneName, sceneItemId, enabled);
       return { ok: true };
@@ -951,6 +1000,62 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('obs:stop-record', async () => {
     try { await obsClient.stopRecord(); return { ok: true }; }
+    catch (err: any) { return { ok: false, error: err?.message || 'Failed to stop recording' }; }
+  });
+
+  // ----- Obzidian control (2026-11-08) ----- same shape as OBS's own
+  // block above — it speaks the identical real obs-websocket v5 protocol
+  // (see electron/obzidian-client.ts), just over its own separate
+  // connection/config fields so a streamer can configure OBS and Obzidian
+  // independently (even though in practice only one would be running).
+  ipcMain.handle('obzidian:get-status', () => obzidianClient.getObzidianStatus());
+
+  ipcMain.handle('obzidian:connect', async (_e, url: string, password: string) => {
+    saveConfig({ obzidianUrl: url, obzidianPassword: password });
+    try {
+      await obzidianClient.connectObzidian(url, password);
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Failed to connect to Obzidian', code: typeof err?.code === 'number' ? err.code : undefined };
+    }
+  });
+
+  ipcMain.handle('obzidian:disconnect', () => obzidianClient.disconnectObzidian());
+
+  ipcMain.handle('obzidian:switch-scene', async (_e, sceneName: string) => {
+    try {
+      await obzidianClient.obzidianSwitchScene(sceneName);
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Failed to switch scene' };
+    }
+  });
+
+  ipcMain.handle('obzidian:get-scene-items', (_e, sceneName: string) => obzidianClient.obzidianGetSceneItems(sceneName));
+
+  ipcMain.handle('obzidian:toggle-source', async (_e, sceneName: string, sceneItemId: number | string, enabled: boolean) => {
+    try {
+      await obzidianClient.obzidianSetSceneItemEnabled(sceneName, sceneItemId, enabled);
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Failed to toggle source' };
+    }
+  });
+
+  ipcMain.handle('obzidian:start-stream', async () => {
+    try { await obzidianClient.obzidianStartStream(); return { ok: true }; }
+    catch (err: any) { return { ok: false, error: err?.message || 'Failed to start streaming' }; }
+  });
+  ipcMain.handle('obzidian:stop-stream', async () => {
+    try { await obzidianClient.obzidianStopStream(); return { ok: true }; }
+    catch (err: any) { return { ok: false, error: err?.message || 'Failed to stop streaming' }; }
+  });
+  ipcMain.handle('obzidian:start-record', async () => {
+    try { await obzidianClient.obzidianStartRecord(); return { ok: true }; }
+    catch (err: any) { return { ok: false, error: err?.message || 'Failed to start recording' }; }
+  });
+  ipcMain.handle('obzidian:stop-record', async () => {
+    try { await obzidianClient.obzidianStopRecord(); return { ok: true }; }
     catch (err: any) { return { ok: false, error: err?.message || 'Failed to stop recording' }; }
   });
 

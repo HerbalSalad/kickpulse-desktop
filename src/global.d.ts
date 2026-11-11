@@ -67,6 +67,8 @@ declare global {
     obsUrl: string;
     obsPassword: string;
     meldUrl: string;
+    obzidianUrl: string;
+    obzidianPassword: string;
     overlayDisplayId: number | null;
     minimizeToTrayOnClose: boolean;
     trayHintShown: boolean;
@@ -256,7 +258,7 @@ declare global {
   }
 
   interface ObsSceneItemInfo {
-    sceneItemId: number;
+    sceneItemId: number | string;
     sourceName: string;
     sceneItemEnabled: boolean;
   }
@@ -364,12 +366,24 @@ declare global {
       obsDisconnect: () => Promise<void>;
       obsSwitchScene: (sceneName: string) => Promise<IpcResult>;
       obsGetSceneItems: (sceneName: string) => Promise<ObsSceneItemInfo[]>;
-      obsToggleSource: (sceneName: string, sceneItemId: number, enabled: boolean) => Promise<IpcResult>;
+      obsToggleSource: (sceneName: string, sceneItemId: number | string, enabled: boolean) => Promise<IpcResult>;
       obsStartStream: () => Promise<IpcResult>;
       obsStopStream: () => Promise<IpcResult>;
       obsStartRecord: () => Promise<IpcResult>;
       obsStopRecord: () => Promise<IpcResult>;
       onObsStatus: (cb: (status: ObsStatus) => void) => void;
+
+      obzidianGetStatus: () => Promise<ObsStatus>;
+      obzidianConnect: (url: string, password: string) => Promise<IpcResult>;
+      obzidianDisconnect: () => Promise<void>;
+      obzidianSwitchScene: (sceneName: string) => Promise<IpcResult>;
+      obzidianGetSceneItems: (sceneName: string) => Promise<ObsSceneItemInfo[]>;
+      obzidianToggleSource: (sceneName: string, sceneItemId: number | string, enabled: boolean) => Promise<IpcResult>;
+      obzidianStartStream: () => Promise<IpcResult>;
+      obzidianStopStream: () => Promise<IpcResult>;
+      obzidianStartRecord: () => Promise<IpcResult>;
+      obzidianStopRecord: () => Promise<IpcResult>;
+      onObzidianStatus: (cb: (status: ObsStatus) => void) => void;
 
       meldGetStatus: () => Promise<MeldStatus>;
       meldConnect: (url: string) => Promise<IpcResult>;

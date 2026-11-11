@@ -126,7 +126,7 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
     ipcRenderer.invoke('obs:switch-scene', sceneName),
   obsGetSceneItems: (sceneName: string): Promise<ObsSceneItemInfo[]> =>
     ipcRenderer.invoke('obs:get-scene-items', sceneName),
-  obsToggleSource: (sceneName: string, sceneItemId: number, enabled: boolean): Promise<{ ok: boolean; error?: string }> =>
+  obsToggleSource: (sceneName: string, sceneItemId: number | string, enabled: boolean): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('obs:toggle-source', sceneName, sceneItemId, enabled),
   obsStartStream: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('obs:start-stream'),
   obsStopStream: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('obs:stop-stream'),
@@ -134,6 +134,26 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
   obsStopRecord: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('obs:stop-record'),
   onObsStatus: (cb: (status: ObsStatus) => void) => {
     ipcRenderer.on('obs-status-update', (_e, status: ObsStatus) => cb(status));
+  },
+
+  // Obzidian control (2026-11-08) — same shape as the OBS bridge above; it
+  // speaks the identical real obs-websocket v5 protocol.
+  obzidianGetStatus: (): Promise<ObsStatus> => ipcRenderer.invoke('obzidian:get-status'),
+  obzidianConnect: (url: string, password: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('obzidian:connect', url, password),
+  obzidianDisconnect: (): Promise<void> => ipcRenderer.invoke('obzidian:disconnect'),
+  obzidianSwitchScene: (sceneName: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('obzidian:switch-scene', sceneName),
+  obzidianGetSceneItems: (sceneName: string): Promise<ObsSceneItemInfo[]> =>
+    ipcRenderer.invoke('obzidian:get-scene-items', sceneName),
+  obzidianToggleSource: (sceneName: string, sceneItemId: number | string, enabled: boolean): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('obzidian:toggle-source', sceneName, sceneItemId, enabled),
+  obzidianStartStream: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('obzidian:start-stream'),
+  obzidianStopStream: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('obzidian:stop-stream'),
+  obzidianStartRecord: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('obzidian:start-record'),
+  obzidianStopRecord: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('obzidian:stop-record'),
+  onObzidianStatus: (cb: (status: ObsStatus) => void) => {
+    ipcRenderer.on('obzidian-status-update', (_e, status: ObsStatus) => cb(status));
   },
 
   // Meld Studio control (2026-10-25) — same shape as the OBS bridge above.

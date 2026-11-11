@@ -47,8 +47,21 @@ function formatDuration(ms: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
+// Obzidian (2026-11-08) — our own OBS/Meld competitor (kickpulse-streamer-qt).
+// It deliberately speaks the real obs-websocket v5 protocol on the same
+// default port OBS uses, so this reuses friendlyObsError's exact OBS-shaped
+// logic (4009 = AuthenticationFailed) — only the setup instructions below
+// differ (Obzidian's own Settings → Remote Control, not OBS's Tools menu).
+function friendlyObzidianError(error?: string, code?: number): string | null {
+  if (!error) return null;
+  if (code === 4009) {
+    return "Wrong password. In Obzidian: Settings → Remote Control, then copy the password shown there.";
+  }
+  return "Couldn't reach Obzidian. Make sure it's open and Settings → Remote Control → \"Enable\" is checked — then try again.";
+}
+
 export default function ObsControlPage() {
-  const [tab, setTab] = useState<'obs' | 'meld'>('obs');
+  const [tab, setTab] = useState<'obs' | 'obzidian' | 'meld'>('obs');
   const [status, setStatus] = useState<ObsStatus | null>(null);
   const [url, setUrl] = useState('ws://127.0.0.1:4455');
   const [password, setPassword] = useState('');
@@ -147,6 +160,95 @@ export default function ObsControlPage() {
   }, [status?.recording, status?.recordDurationMs]);
   const liveRecordMs = status?.recording && recordAnchor ? recordAnchor.ms + (now - recordAnchor.at) : 0;
 
+  // ───────── Obzidian (2026-11-08) ───────── same shape as OBS's own state
+  // above — it speaks the identical real protocol, just over its own
+  // separate connection/config.
+  const [obzStatus, setObzStatus] = useState<ObsStatus | null>(null);
+  const [obzUrl, setObzUrl] = useState('ws://127.0.0.1:4455');
+  const [obzPassword, setObzPassword] = useState('');
+  const [obzConnecting, setObzConnecting] = useState(false);
+  const [selectedObzScene, setSelectedObzScene] = useState<string | null>(null);
+  const [obzItems, setObzItems] = useState<ObsSceneItemInfo[]>([]);
+  const [obzItemsLoading, setObzItemsLoading] = useState(false);
+  const [obzStreamBusy, setObzStreamBusy] = useState(false);
+  const [obzRecordBusy, setObzRecordBusy] = useState(false);
+  const [obzStreamError, setObzStreamError] = useState<string | null>(null);
+  const [obzRecordError, setObzRecordError] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.kickpulseDesktop.getConfig().then((cfg) => {
+      setObzUrl(cfg.obzidianUrl || 'ws://127.0.0.1:4455');
+      setObzPassword(cfg.obzidianPassword || '');
+    });
+    window.kickpulseDesktop.obzidianGetStatus().then(setObzStatus);
+    window.kickpulseDesktop.onObzidianStatus(setObzStatus);
+  }, []);
+
+  useEffect(() => {
+    if (obzStatus?.currentScene && !selectedObzScene) setSelectedObzScene(obzStatus.currentScene);
+  }, [obzStatus?.currentScene]);
+
+  useEffect(() => {
+    if (!obzStatus?.connected || !selectedObzScene) {
+      setObzItems([]);
+      return;
+    }
+    setObzItemsLoading(true);
+    window.kickpulseDesktop
+      .obzidianGetSceneItems(selectedObzScene)
+      .then(setObzItems)
+      .catch(() => setObzItems([]))
+      .finally(() => setObzItemsLoading(false));
+  }, [obzStatus?.connected, selectedObzScene, obzStatus?.currentScene]);
+
+  const obzConnect = async () => {
+    setObzConnecting(true);
+    await window.kickpulseDesktop.obzidianConnect(obzUrl, obzPassword);
+    setObzConnecting(false);
+  };
+  const obzDisconnect = () => window.kickpulseDesktop.obzidianDisconnect();
+  const obzSwitchScene = (sceneName: string) => {
+    setSelectedObzScene(sceneName);
+    window.kickpulseDesktop.obzidianSwitchScene(sceneName);
+  };
+  const obzToggleSource = (item: ObsSceneItemInfo) => {
+    if (!selectedObzScene) return;
+    const next = !item.sceneItemEnabled;
+    setObzItems((prev) => prev.map((i) => (i.sceneItemId === item.sceneItemId ? { ...i, sceneItemEnabled: next } : i)));
+    window.kickpulseDesktop.obzidianToggleSource(selectedObzScene, item.sceneItemId, next).then((res) => {
+      if (!res.ok) setObzItems((prev) => prev.map((i) => (i.sceneItemId === item.sceneItemId ? { ...i, sceneItemEnabled: !next } : i)));
+    });
+  };
+
+  const obzToggleStream = async () => {
+    setObzStreamBusy(true);
+    setObzStreamError(null);
+    const res = await (obzStatus?.streaming ? window.kickpulseDesktop.obzidianStopStream() : window.kickpulseDesktop.obzidianStartStream());
+    if (!res.ok) setObzStreamError(res.error || `Failed to ${obzStatus?.streaming ? 'stop' : 'start'} streaming`);
+    setObzStreamBusy(false);
+  };
+  const obzToggleRecord = async () => {
+    setObzRecordBusy(true);
+    setObzRecordError(null);
+    const res = await (obzStatus?.recording ? window.kickpulseDesktop.obzidianStopRecord() : window.kickpulseDesktop.obzidianStartRecord());
+    if (!res.ok) setObzRecordError(res.error || `Failed to ${obzStatus?.recording ? 'stop' : 'start'} recording`);
+    setObzRecordBusy(false);
+  };
+
+  const [obzAnchor, setObzAnchor] = useState<{ ms: number; at: number } | null>(null);
+  useEffect(() => {
+    if (obzStatus?.streaming) setObzAnchor({ ms: obzStatus.streamDurationMs, at: Date.now() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obzStatus?.streaming, obzStatus?.streamDurationMs]);
+  const liveObzStreamMs = obzStatus?.streaming && obzAnchor ? obzAnchor.ms + (now - obzAnchor.at) : 0;
+
+  const [obzRecordAnchor, setObzRecordAnchor] = useState<{ ms: number; at: number } | null>(null);
+  useEffect(() => {
+    if (obzStatus?.recording) setObzRecordAnchor({ ms: obzStatus.recordDurationMs, at: Date.now() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obzStatus?.recording, obzStatus?.recordDurationMs]);
+  const liveObzRecordMs = obzStatus?.recording && obzRecordAnchor ? obzRecordAnchor.ms + (now - obzRecordAnchor.at) : 0;
+
   // ───────── Meld Studio (2026-10-25) ─────────
   const [meldStatus, setMeldStatus] = useState<MeldStatus | null>(null);
   const [meldUrl, setMeldUrl] = useState('ws://127.0.0.1:13376');
@@ -216,6 +318,7 @@ export default function ObsControlPage() {
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <Button variant={tab === 'obs' ? 'primary' : undefined} onClick={() => setTab('obs')}>OBS</Button>
+        <Button variant={tab === 'obzidian' ? 'primary' : undefined} onClick={() => setTab('obzidian')}>Obzidian</Button>
         <Button variant={tab === 'meld' ? 'primary' : undefined} onClick={() => setTab('meld')}>Meld Studio</Button>
       </div>
 
@@ -334,6 +437,129 @@ export default function ObsControlPage() {
               {items.map((item) => (
                 <Row key={item.sceneItemId} label={item.sourceName}>
                   <Toggle checked={item.sceneItemEnabled} onChange={() => toggleSource(item)} />
+                </Row>
+              ))}
+            </Section>
+          </div>
+        </>
+      )}
+      </>}
+
+      {tab === 'obzidian' && <>
+      {!obzStatus?.connected && (
+        <Section title="Connect to Obzidian">
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, color: COLORS.textDim,
+            background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 14,
+          }}>
+            <div style={{ fontWeight: 600, color: COLORS.text, marginBottom: 2 }}>One-time setup, in Obzidian itself:</div>
+            <div>1. Open Obzidian → <strong style={{ color: COLORS.text }}>Settings</strong> → <strong style={{ color: COLORS.text }}>Remote Control</strong></div>
+            <div>2. Check <strong style={{ color: COLORS.text }}>"Enable"</strong> if it isn't already</div>
+            <div>3. Copy the password shown there</div>
+            <div>4. Paste it below and hit Connect — the default address below already matches Obzidian's own default</div>
+          </div>
+          <Row label="Server URL"><TextInput value={obzUrl} onChange={setObzUrl} /></Row>
+          <Row label="Password" hint="From Obzidian's own Settings → Remote Control"><TextInput value={obzPassword} onChange={setObzPassword} placeholder="•••" /></Row>
+          <Button variant="primary" onClick={obzConnect} disabled={obzConnecting}>
+            {obzConnecting || obzStatus?.connecting ? 'Connecting…' : 'Connect'}
+          </Button>
+          {obzStatus?.error && (
+            <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
+              <div style={{ color: '#fca5a5', fontSize: 13, fontWeight: 600 }}>{friendlyObzidianError(obzStatus.error, obzStatus.errorCode)}</div>
+              <div style={{ color: COLORS.textDim, fontSize: 11, marginTop: 4 }}>({obzStatus.error})</div>
+            </div>
+          )}
+        </Section>
+      )}
+
+      {obzStatus?.connected && (
+        <>
+          <Section>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ color: COLORS.accent, fontWeight: 700, fontSize: 14 }}>● Connected to Obzidian</div>
+                <div style={{ fontSize: 12, color: COLORS.textDim, marginTop: 2 }}>Live scene: {obzStatus.currentScene || '—'}</div>
+              </div>
+              <Button onClick={obzDisconnect}>Disconnect</Button>
+            </div>
+          </Section>
+
+          <Section title="Stream & Record">
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: obzStatus.streaming ? 'rgba(239,68,68,0.12)' : COLORS.panel, border: `1px solid ${obzStatus.streaming ? '#ef4444' : COLORS.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Radio size={16} color={obzStatus.streaming ? '#ef4444' : COLORS.textDim} />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: obzStatus.streaming ? '#fca5a5' : COLORS.text }}>
+                        {obzStatus.streaming ? 'Streaming' : 'Not streaming'}
+                      </div>
+                      {obzStatus.streaming && <div style={{ fontSize: 11, color: COLORS.textDim }}>{formatDuration(liveObzStreamMs)}</div>}
+                    </div>
+                  </div>
+                  <Button variant={obzStatus.streaming ? 'danger' : 'primary'} onClick={obzToggleStream} disabled={obzStreamBusy}>
+                    {obzStatus.streaming ? <Square size={13} /> : <Play size={13} />}
+                    {obzStatus.streaming ? 'Stop' : 'Start'}
+                  </Button>
+                </div>
+                {obzStreamError && (
+                  <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5', fontSize: 12 }}>
+                    {obzStreamError}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: obzStatus.recording ? 'rgba(239,68,68,0.12)' : COLORS.panel, border: `1px solid ${obzStatus.recording ? '#ef4444' : COLORS.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Circle size={16} color={obzStatus.recording ? '#ef4444' : COLORS.textDim} fill={obzStatus.recording ? '#ef4444' : 'none'} />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: obzStatus.recording ? '#fca5a5' : COLORS.text }}>
+                        {obzStatus.recording ? 'Recording' : 'Not recording'}
+                      </div>
+                      {obzStatus.recording && <div style={{ fontSize: 11, color: COLORS.textDim }}>{formatDuration(liveObzRecordMs)}</div>}
+                    </div>
+                  </div>
+                  <Button variant={obzStatus.recording ? 'danger' : 'primary'} onClick={obzToggleRecord} disabled={obzRecordBusy}>
+                    {obzStatus.recording ? <Square size={13} /> : <Play size={13} />}
+                    {obzStatus.recording ? 'Stop' : 'Start'}
+                  </Button>
+                </div>
+                {obzRecordError && (
+                  <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5', fontSize: 12 }}>
+                    {obzRecordError}
+                  </div>
+                )}
+              </div>
+            </div>
+          </Section>
+
+          <div style={{ display: 'flex', gap: 16 }}>
+            <Section title="Scenes" style={{ flex: 1, margin: 0 }}>
+              {obzStatus.scenes.map((s) => (
+                <button
+                  key={s.sceneUuid}
+                  onClick={() => obzSwitchScene(s.sceneName)}
+                  style={{
+                    display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', marginBottom: 4,
+                    borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13,
+                    background: s.sceneName === obzStatus.currentScene ? COLORS.accentDim : COLORS.panel,
+                    color: s.sceneName === obzStatus.currentScene ? COLORS.text : COLORS.textDim,
+                    fontWeight: s.sceneName === selectedObzScene ? 600 : 400,
+                    outline: s.sceneName === selectedObzScene && s.sceneName !== obzStatus.currentScene ? `1px solid ${COLORS.border}` : 'none',
+                  }}
+                >
+                  {s.sceneName === obzStatus.currentScene ? '● ' : ''}{s.sceneName}
+                </button>
+              ))}
+            </Section>
+
+            <Section title={`Sources${selectedObzScene ? ` in "${selectedObzScene}"` : ''}`} style={{ flex: 1, margin: 0 }}>
+              {obzItemsLoading && <div style={{ fontSize: 12, color: COLORS.textDim }}>Loading…</div>}
+              {!obzItemsLoading && obzItems.length === 0 && <div style={{ fontSize: 12, color: COLORS.textDim }}>No sources in this scene.</div>}
+              {obzItems.map((item) => (
+                <Row key={item.sceneItemId} label={item.sourceName}>
+                  <Toggle checked={item.sceneItemEnabled} onChange={() => obzToggleSource(item)} />
                 </Row>
               ))}
             </Section>

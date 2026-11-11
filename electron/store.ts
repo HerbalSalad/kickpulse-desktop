@@ -17,6 +17,10 @@ const DEFAULTS: DesktopConfig = {
   obsUrl: 'ws://127.0.0.1:4455',
   obsPassword: '',
   meldUrl: 'ws://127.0.0.1:13376',
+  // Obzidian's own default — same port as real OBS (4455), deliberately,
+  // since its Remote Control server speaks the same real protocol.
+  obzidianUrl: 'ws://127.0.0.1:4455',
+  obzidianPassword: '',
   overlayDisplayId: null,
   minimizeToTrayOnClose: true,
   trayHintShown: false,
@@ -78,6 +82,7 @@ export function loadConfig(): DesktopConfig {
   // stays the one place that knows about ENC_PREFIX at all.
   merged.apiKey = decryptSecret(merged.apiKey);
   merged.obsPassword = decryptSecret(merged.obsPassword) ?? '';
+  merged.obzidianPassword = decryptSecret(merged.obzidianPassword) ?? '';
   return merged;
 }
 
@@ -87,6 +92,7 @@ export function saveConfig(partial: Partial<DesktopConfig>): DesktopConfig {
     ...next,
     apiKey: encryptSecret(next.apiKey),
     obsPassword: encryptSecret(next.obsPassword) ?? '',
+    obzidianPassword: encryptSecret(next.obzidianPassword) ?? '',
   };
   fs.mkdirSync(path.dirname(configPath()), { recursive: true });
   fs.writeFileSync(configPath(), JSON.stringify(onDisk, null, 2), 'utf8');

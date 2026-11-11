@@ -33,6 +33,12 @@ export interface DesktopConfig {
   // docs — trusted-local-network-only by design), so there's no companion
   // meldPassword field the way OBS has one.
   meldUrl: string;
+  // Obzidian (2026-11-08) — "not all users use OBS," same reasoning Meld
+  // support already established. Obzidian speaks the real obs-websocket v5
+  // protocol (see electron/obzidian-client.ts), so this is a password, not
+  // a passwordless URL the way Meld's own WebChannel API is.
+  obzidianUrl: string;
+  obzidianPassword: string;
   // Which physical display hosts the always-on overlay window (2026-10-18)
   // — null = always follow whichever display Windows currently calls
   // primary. See electron/overlay-window.ts's own DisplayOption/
@@ -264,7 +270,12 @@ export interface ObsSceneInfo {
 }
 
 export interface ObsSceneItemInfo {
-  sceneItemId: number;
+  // number for real OBS; Obzidian's own ids are non-numeric strings like
+  // "src_1" (see ObsWebSocketServer's GetSceneItemList, which documents
+  // this as a deliberate spec deviation) — widened here instead of
+  // Number()-coercing them away, which used to turn every Obzidian
+  // sceneItemId into NaN and silently break toggling sources on/off.
+  sceneItemId: number | string;
   sourceName: string;
   sceneItemEnabled: boolean;
 }
