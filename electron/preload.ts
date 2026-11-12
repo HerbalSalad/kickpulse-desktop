@@ -379,6 +379,7 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
   // per-caller unsubscribe handle.
   chatFeed: (() => {
     let messageListener: ((e: unknown, msg: ChatFeedMessage) => void) | null = null;
+    let deletedListener: ((e: unknown, id: string) => void) | null = null;
     let eventListener: ((e: unknown, evt: EventFeedItem) => void) | null = null;
     return {
       getRecent: (): Promise<{ chat: ChatFeedMessage[]; events: EventFeedItem[] }> => ipcRenderer.invoke('chat-feed:get-recent'),
@@ -386,6 +387,14 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
         if (messageListener) ipcRenderer.removeListener('chat-feed:message', messageListener as any);
         messageListener = (_e, msg: ChatFeedMessage) => cb(msg);
         ipcRenderer.on('chat-feed:message', messageListener as any);
+      },
+      // onMessageDeleted (2026-11-12) — Kick's Centrifugo MessageDeletedEvent
+      // (main.ts's own handleWsMessage), relayed the same "newest
+      // registration wins" way as onMessage above.
+      onMessageDeleted: (cb: (id: string) => void) => {
+        if (deletedListener) ipcRenderer.removeListener('chat-feed:message-deleted', deletedListener as any);
+        deletedListener = (_e, id: string) => cb(id);
+        ipcRenderer.on('chat-feed:message-deleted', deletedListener as any);
       },
       onEvent: (cb: (evt: EventFeedItem) => void) => {
         if (eventListener) ipcRenderer.removeListener('chat-feed:event', eventListener as any);

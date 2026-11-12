@@ -20,7 +20,7 @@ import {
 } from './oauth-login';
 import type { TwitchIrcHandle } from './twitch-irc';
 import {
-  pushChatMessage, pushEvent, getRecentChat, getRecentEvents, clearAll as clearChatFeed,
+  pushChatMessage, removeChatMessage, pushEvent, getRecentChat, getRecentEvents, clearAll as clearChatFeed,
   summarizeKickEvent, summarizeTwitchEvent, KNOWN_KICK_EVENT_TYPES, KNOWN_TWITCH_EVENT_TYPES,
 } from './chat-feed';
 import { getKickEmotes } from './kick-emotes';
@@ -291,15 +291,16 @@ async function connectAccount(apiKey: string): Promise<void> {
     remoteConfig = await getJumpscareConfig(apiKey).catch(() => null);
     scenesConfig = await getScenesConfig(apiKey).catch(() => null);
     if (me.kickBroadcasterId) {
-      wsHandle = connectToKickPulse(me.kickBroadcasterId, handleWsMessage);
+      wsHandle = connectToKickPulse(me.kickBroadcasterId, me.username, handleWsMessage);
     } else {
       console.warn('[desktop] no Kick account linked — live events cannot reach this app yet');
     }
     // Live Chat feed's Twitch half (2026-10-19) — Kick chat already arrives
-    // over wsHandle above (server.js forwards chat.message.sent to every
-    // subscribed WS client); Twitch chat never does (see twitch-irc.ts's
-    // own header), so this app needs its own direct connection, same as
-    // the website's own chat widgets.
+    // over wsHandle above (server.js relays Kick's own Centrifugo chat
+    // transport to every subscribed WS client — see handleWsMessage's own
+    // centrifugo.chat.message handling); Twitch chat never does (see
+    // twitch-irc.ts's own header), so this app needs its own direct
+    // connection, same as the website's own chat widgets.
     if (me.twitchConnected && me.twitchUsername) {
       twitchIrcHandle = connectTwitchIrc(me.twitchUsername, (msg) => {
         const chatMsg = {
@@ -327,25 +328,38 @@ function handleWsMessage(msg: any): void {
   }
 
   if (msg.type === 'kickEvent') {
-    // chat.message.sent (2026-10-19) — the Live Chat feed's Kick half.
+    // centrifugo.chat.message (2026-11-12, swapped from the official
+    // webhook's chat.message.sent) — the Live Chat feed's Kick half.
     // Twitch chat never reaches this WS connection at all (see
     // connectAccount's own comment on why it needs its own IRC
-    // connection) — Kick's own chat.message.sent event, by contrast, is
-    // already forwarded to every subscribed WS client by server.js, so
-    // this app just needed to start actually DOING something with it.
-    if (msg.event === 'chat.message.sent' && msg.payload) {
-      const sender = msg.payload.sender || {};
+    // connection). lib/kickCentrifugo.js's own relay already normalizes
+    // the payload and merges classic badges + any selected badges_v2 image
+    // into one `badges` array (kickBadges.ts's own BadgeData shape), so
+    // this app needs no badge-shape handling of its own beyond passing
+    // them straight through.
+    if (msg.event === 'centrifugo.chat.message' && msg.payload) {
       const chatMsg = {
-        id: String(msg.payload.message_id || `kick-${Date.now()}-${Math.random()}`),
+        id: String(msg.payload.id || `kick-${Date.now()}-${Math.random()}`),
         platform: 'kick' as const,
-        username: sender.username || 'Unknown',
+        username: msg.payload.username || 'Unknown',
         content: msg.payload.content || '',
-        color: sender.identity?.username_color || null,
-        badges: sender.identity?.badges || [],
-        createdAt: msg.payload.created_at || new Date().toISOString(),
+        color: msg.payload.color || null,
+        badges: msg.payload.badges || [],
+        createdAt: msg.payload.createdAt || new Date().toISOString(),
       };
       pushChatMessage(chatMsg);
       mainWindow?.webContents.send('chat-feed:message', chatMsg);
+      return;
+    }
+    // centrifugo.chat.message_deleted (2026-11-12) — the one thing the
+    // official webhook pipeline never had an equivalent for at all: a
+    // message deleted anywhere else (auto-mod, another mod, Kick itself)
+    // now disappears from this app's Live Chat feed too, same as it
+    // already does on the website's Chat Dock/Chat Overlay widget.
+    if (msg.event === 'centrifugo.chat.message_deleted' && msg.payload?.id) {
+      const id = String(msg.payload.id);
+      removeChatMessage(id);
+      mainWindow?.webContents.send('chat-feed:message-deleted', id);
       return;
     }
     // youtube.chatMessage / tiktok.chatMessage (2026-10-20, direct request:
@@ -824,7 +838,7 @@ app.whenReady().then(async () => {
       scenesConfig = await getScenesConfig(apiKey).catch(() => null);
       setStatus({ connected: true, me });
       wsHandle?.close();
-      wsHandle = me.kickBroadcasterId ? connectToKickPulse(me.kickBroadcasterId, handleWsMessage) : null;
+      wsHandle = me.kickBroadcasterId ? connectToKickPulse(me.kickBroadcasterId, me.username, handleWsMessage) : null;
       twitchIrcHandle?.close();
       twitchIrcHandle = null;
       clearChatFeed();

@@ -25,7 +25,7 @@ export interface WsClientHandle {
   close: () => void;
 }
 
-export function connectToKickPulse(broadcasterId: string, onMessage: (msg: any) => void): WsClientHandle {
+export function connectToKickPulse(broadcasterId: string, kickSlug: string | null, onMessage: (msg: any) => void): WsClientHandle {
   let ws: WebSocket | null = null;
   let timer: NodeJS.Timeout | null = null;
   let dead = false;
@@ -54,7 +54,17 @@ export function connectToKickPulse(broadcasterId: string, onMessage: (msg: any) 
       // matches only on broadcasterId, never subscribeKind, so this has
       // zero effect on actually receiving jumpscare/scene/chat messages
       // here either way.
-      ws?.send(JSON.stringify({ type: 'subscribe', broadcasterId, kind: 'desktop' }));
+      // kickSlug (2026-11-12) — tells server.js's subscribe handler to
+      // start this broadcaster's own Kick Centrifugo relay
+      // (lib/kickCentrifugo.js), same mechanism the website's Chat Dock and
+      // Chat Overlay widget already use — see main.ts's own handleWsMessage
+      // for why this app wants 'centrifugo.chat.message'/
+      // '...message_deleted' instead of the old chat.message.sent webhook
+      // event. Omitted (left out of the sent object, not sent as null) when
+      // no Kick account is linked — connectToKickPulse is never even called
+      // in that case (see main.ts's own kickBroadcasterId guard), but this
+      // keeps the subscribe message shape honest either way.
+      ws?.send(JSON.stringify({ type: 'subscribe', broadcasterId, kind: 'desktop', ...(kickSlug ? { kickSlug } : {}) }));
       console.log('[ws] subscribed as broadcaster', broadcasterId);
     });
 

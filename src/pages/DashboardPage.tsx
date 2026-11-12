@@ -223,6 +223,12 @@ export default function DashboardPage() {
     window.kickpulseDesktop.chatFeed.onMessage((msg) => {
       setMessages(prev => [...prev, msg].slice(-300));
     });
+    // Kick message deletion (2026-11-12) — a message deleted anywhere else
+    // (auto-mod, another mod, Kick itself) now disappears from this feed
+    // too, same as the website's Chat Dock/Chat Overlay widget.
+    window.kickpulseDesktop.chatFeed.onMessageDeleted((id) => {
+      setMessages(prev => prev.filter(m => m.id !== id));
+    });
     window.kickpulseDesktop.chatFeed.onEvent((evt) => {
       setEvents(prev => [...prev, evt].slice(-200));
     });

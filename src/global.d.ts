@@ -240,7 +240,9 @@ declare global {
     username: string;
     content: string;
     color: string | null;
-    badges: { type: string; count?: number }[];
+    // image (2026-11-12) — badges_v2, see electron/chat-feed.ts's own
+    // ChatFeedMessage for why this exists now.
+    badges: { type: string; count?: number; image?: string | { src?: string } }[];
     createdAt: string;
     emotesTag?: string | null;
   }
@@ -548,6 +550,7 @@ declare global {
       chatFeed: {
         getRecent: () => Promise<{ chat: ChatFeedMessage[]; events: EventFeedItem[] }>;
         onMessage: (cb: (msg: ChatFeedMessage) => void) => void;
+        onMessageDeleted: (cb: (id: string) => void) => void;
         onEvent: (cb: (evt: EventFeedItem) => void) => void;
         getViewerInfo: (usernames: string[], platform: 'kick' | 'twitch') => Promise<Record<string, ViewerInfo>>;
         getThreatSettings: () => Promise<{ minThreatLevelToWarn: number }>;

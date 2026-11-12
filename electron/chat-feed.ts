@@ -1,11 +1,16 @@
 // electron/chat-feed.ts — rolling in-memory history for the Live Chat &
 // Event Feed page (src/pages/LiveChatPage.tsx). main.ts pushes every chat
-// message / stream event it already receives (Kick's `chat.message.sent`
-// and the other real webhook events over the WS hub, Twitch chat over its
-// own IRC connection — see twitch-irc.ts) into this buffer AND forwards it
-// live to the renderer over IPC; the renderer also pulls the buffer once on
-// mount ('chat-feed:get-recent') so opening the page late still shows
+// message / stream event it already receives into this buffer AND forwards
+// it live to the renderer over IPC; the renderer also pulls the buffer once
+// on mount ('chat-feed:get-recent') so opening the page late still shows
 // recent history, not just whatever arrives from that point on.
+//
+// Kick chat (2026-11-12) arrives via lib/kickCentrifugo.js's server-side
+// relay — 'centrifugo.chat.message' over the same WS hub, swapped from the
+// official webhook's 'chat.message.sent' so this app gets real badges_v2
+// images and real-time message deletion (MessageDeletedEvent has no
+// equivalent on the webhook pipeline at all). Twitch chat still has its own
+// IRC connection (see twitch-irc.ts) — nothing changed there.
 //
 // In-memory only, lost on restart — same accepted limitation every other
 // in-memory desktop-app state already has (jumpscare/scenes config
@@ -20,7 +25,11 @@ export interface ChatFeedMessage {
   username: string;
   content: string;
   color: string | null;
-  badges: { type: string; count?: number }[];
+  // image (2026-11-12) — badges_v2 (lib/kickCentrifugo.js's buildBadges())
+  // carries a pre-resolved image URL for gifter-level/seasonal/other
+  // badges that classic `badges` (type+count) never had at all — see
+  // src/lib/kickBadges.ts's own renderBadgeHtml for how this renders.
+  badges: { type: string; count?: number; image?: string | { src?: string } }[];
   createdAt: string;
   // emotesTag — Twitch only (its raw IRC `emotes` tag, see twitch-irc.ts);
   // Kick emotes arrive as inline [emote:id:name] tokens already inside
@@ -46,6 +55,17 @@ const eventBuffer: EventFeedItem[] = [];
 export function pushChatMessage(msg: ChatFeedMessage): void {
   chatBuffer.push(msg);
   if (chatBuffer.length > CHAT_CAP) chatBuffer.shift();
+}
+
+// removeChatMessage (2026-11-12) — Kick's Centrifugo MessageDeletedEvent
+// (main.ts's own handleWsMessage) carries no equivalent on the official
+// webhook pipeline this buffer used to rely on exclusively; a message
+// deleted anywhere else (auto-mod, another mod, Kick itself) now removes
+// itself from this in-memory buffer too, same as it already does on the
+// website's Chat Dock.
+export function removeChatMessage(id: string): void {
+  const idx = chatBuffer.findIndex((m) => m.id === id);
+  if (idx !== -1) chatBuffer.splice(idx, 1);
 }
 
 export function pushEvent(evt: EventFeedItem): void {

@@ -92,9 +92,23 @@ export function renderBadgeHtml(badge: BadgeData, size = 16, subscriberBadges: S
     return `<span style="position:relative;${inlineStyle}" title="${count} Gifted Subs">${scaleSvg(BADGE_SVGS.sub_gifter, s)}</span>`;
   }
 
+  const title = BADGE_TITLES[badge.type] || badge.type;
+
+  // badges_v2 (2026-11-12, ported from the website's own same-day fix to
+  // KickBadges.tsx) — a badge carrying its own pre-resolved image (Kick's
+  // Centrifugo relay's buildBadges(), for gifter-level/seasonal/other
+  // badges with no entry at all in BADGE_SVGS — the badge's own arbitrary
+  // `type` name was never going to match a baked-in SVG key, so it fell
+  // through to `svg undefined -> return ''` below and simply never
+  // rendered). Any badge carrying a real image wins over the baked-in SVG
+  // lookup, same precedence the subscriber branch above already has.
+  const genericSrc = typeof badge.image === 'string' ? badge.image : badge.image?.src;
+  if (genericSrc) {
+    return `<img src="${genericSrc}" alt="${title}" title="${title}" style="${inlineStyle}object-fit:contain;" />`;
+  }
+
   const svg = BADGE_SVGS[badge.type];
   if (!svg) return '';
-  const title = BADGE_TITLES[badge.type] || badge.type;
   return `<span style="${inlineStyle}" title="${title}">${scaleSvg(svg, s)}</span>`;
 }
 
