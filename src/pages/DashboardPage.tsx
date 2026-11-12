@@ -130,10 +130,15 @@ export default function DashboardPage() {
   // actually reply to their chats") — replyTarget locks the composer to
   // whichever platform a specific message came from and threads the reply
   // natively (reply_to_message_id/reply_parent_message_id — both platforms
-  // support it); with no reply target, draftPlatform picks between whatever
-  // platforms are actually connected for a fresh, unthreaded message.
+  // support it) — a reply, by definition, can only thread on the one
+  // platform the original message came from, so 'both' is never an option
+  // once replyTarget is set. With no reply target, draftPlatform picks
+  // between whatever platforms are actually connected for a fresh,
+  // unthreaded message — including 'both' at once (2026-11-13, direct
+  // request: "some users might want to send a[n] [announcement] to
+  // viewers on both platforms").
   const [replyTarget, setReplyTarget] = useState<{ platform: 'kick' | 'twitch'; id: string; username: string } | null>(null);
-  const [draftPlatform, setDraftPlatform] = useState<'kick' | 'twitch'>('kick');
+  const [draftPlatform, setDraftPlatform] = useState<'kick' | 'twitch' | 'both'>('kick');
   const [draftText, setDraftText] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -292,26 +297,51 @@ export default function DashboardPage() {
     sel?.addRange(range);
     savedRangeRef.current = range.cloneRange();
     emitDraftChange();
-    setEmotePickerOpen(false);
+    // Deliberately stays open (2026-11-13, direct report: "some people
+    // like to put multiple emotes in a row and having to open the emote
+    // menu to do this each time is kind of wack") — only a real outside
+    // click (EmotePicker's own handler) or Send closes it now.
   }, [emitDraftChange]);
+
+  const platformLabel = (p: 'kick' | 'twitch') => (p === 'kick' ? 'Kick' : 'Twitch');
 
   const handleSend = async () => {
     const content = draftText.trim();
     if (!content || sending) return;
-    // Proactive check (2026-11-12) — a stale/under-scoped token would
-    // otherwise fail at the server with a generic rejection; this points
-    // straight at Connections instead of leaving someone to guess why a
-    // reply just silently didn't send.
-    const needsReauth = effectivePlatform === 'kick' ? me?.kickNeedsReauth : me?.twitchNeedsReauth;
-    if (needsReauth) {
-      setSendError(`Your ${effectivePlatform === 'kick' ? 'Kick' : 'Twitch'} connection needs to be reconnected — see the Connections tab.`);
+    // 'both' (2026-11-13, direct request: "some users might want to send
+    // a[n announcement] to viewers on both platforms") fans out into one
+    // send per platform — a reply (replyTarget set) is never 'both', since
+    // a reply can only thread on the one platform the original message
+    // came from.
+    const targets: ('kick' | 'twitch')[] = effectivePlatform === 'both' ? ['kick', 'twitch'] : [effectivePlatform];
+
+    // Proactive reauth check (2026-11-12) — a stale/under-scoped token
+    // would otherwise fail at the server with a generic rejection; this
+    // points straight at Connections instead of leaving someone to guess
+    // why a reply just silently didn't send. A platform that needs
+    // reconnecting is skipped rather than blocking the whole send when
+    // 'both' is picked — the other platform still goes out.
+    const blocked = targets.filter((p) => (p === 'kick' ? me?.kickNeedsReauth : me?.twitchNeedsReauth));
+    const attempt = targets.filter((p) => !blocked.includes(p));
+    if (attempt.length === 0) {
+      setSendError(`Your ${blocked.map(platformLabel).join(' and ')} connection${blocked.length > 1 ? 's' : ''} need${blocked.length > 1 ? '' : 's'} to be reconnected — see the Connections tab.`);
       return;
     }
+
     setSending(true); setSendError(null);
-    const res = await window.kickpulseDesktop.chatFeed.send({ platform: effectivePlatform, content, replyToId: replyTarget?.id ?? null });
+    const results = await Promise.all(attempt.map((platform) =>
+      window.kickpulseDesktop.chatFeed.send({ platform, content, replyToId: replyTarget?.id ?? null }).then((res) => ({ platform, ...res }))
+    ));
     setSending(false);
-    if (!res.ok) { setSendError(res.error || 'Failed to send'); return; }
-    setDraftText(''); setReplyTarget(null); setEmotePickerOpen(false);
+
+    const failParts = [
+      ...blocked.map((p) => `${platformLabel(p)} needs reconnecting`),
+      ...results.filter((r) => !r.ok).map((r) => `${platformLabel(r.platform)}: ${r.error || 'failed'}`),
+    ];
+    if (failParts.length) setSendError(failParts.join(' · '));
+    // Clear the draft once at least one target actually sent — a full
+    // failure leaves it in place so there's something to retry/fix.
+    if (results.some((r) => r.ok)) { setDraftText(''); setReplyTarget(null); setEmotePickerOpen(false); }
   };
 
   return (
@@ -415,7 +445,7 @@ export default function DashboardPage() {
                 {!replyTarget && canKick && canTwitch && (
                   <select
                     value={draftPlatform}
-                    onChange={(e) => setDraftPlatform(e.target.value as 'kick' | 'twitch')}
+                    onChange={(e) => setDraftPlatform(e.target.value as 'kick' | 'twitch' | 'both')}
                     style={{
                       background: '#0e0e14', border: `1px solid ${COLORS.border}`, borderRadius: 8, color: COLORS.text,
                       fontSize: 12, padding: '7px 6px', outline: 'none', flexShrink: 0, cursor: 'pointer',
@@ -423,6 +453,7 @@ export default function DashboardPage() {
                   >
                     <option value="kick">Kick</option>
                     <option value="twitch">Twitch</option>
+                    <option value="both">Both</option>
                   </select>
                 )}
                 <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
@@ -441,7 +472,7 @@ export default function DashboardPage() {
                   />
                   {!draftText && (
                     <div style={{ position: 'absolute', top: 7, left: 10, fontSize: 13, color: COLORS.textFaint, pointerEvents: 'none' }}>
-                      {replyTarget ? `Reply to ${replyTarget.username}…` : `Send a message as yourself on ${effectivePlatform === 'kick' ? 'Kick' : 'Twitch'}…`}
+                      {replyTarget ? `Reply to ${replyTarget.username}…` : `Send a message as yourself on ${effectivePlatform === 'both' ? 'Kick + Twitch' : platformLabel(effectivePlatform)}…`}
                     </div>
                   )}
                 </div>
