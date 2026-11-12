@@ -12,7 +12,7 @@
 // and nothing upstream of this file has sanitized it. Only the <img> tags
 // this file itself constructs are ever allowed through unescaped.
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -64,6 +64,37 @@ export function renderTwitchContent(content: string, emotesTag: string | null | 
   }
   parts.push(escapeHtml(content.slice(cursor)));
   return parts.join('');
+}
+
+// renderDraftWithEmotes/extractDraftContent (2026-11-12, direct request:
+// "when adding emotes to the message, I would prefer they actually show as
+// the emotes there too") — the OUTGOING-message counterpart to
+// renderChatContent above: turns a reply box's own [emote:id:name]/
+// [temote:id:name] draft text into a contentEditable's real <img> markup
+// (so the composer shows the picture while typing, same as the website's
+// own EmoteMessageEditor.tsx), and back again into that same bracket-token
+// string when extracting what to actually send — the server resolves those
+// tokens per-platform exactly the same way regardless of which editor
+// produced them (kickpulse-new's server.js resolveEmoteTokensForPlatform).
+// Emote ids are \w+ (alphanumeric + underscore), not \d+ — Twitch's modern
+// ids look like "emotesv2_<hash>", not a plain number.
+export function renderDraftWithEmotes(text: string): string {
+  return escapeHtml(text)
+    .replace(/\[emote:(\w+):([^\]]*)\]/g, (_m, id, name) =>
+      `<img src="https://files.kick.com/emotes/${id}/fullsize" alt="${name}" class="inline-emote-token" data-emote-code="[emote:${id}:${name}]" style="height:20px;width:auto;vertical-align:middle;display:inline;margin:0 1px;" />`)
+    .replace(/\[temote:(\w+):([^\]]*)\]/g, (_m, id, name) =>
+      `<img src="https://static-cdn.jtvnw.net/emoticons/v2/${id}/default/dark/3.0" alt="${name}" class="inline-emote-token" data-emote-code="[temote:${id}:${name}]" style="height:20px;width:auto;vertical-align:middle;display:inline;margin:0 1px;" />`);
+}
+
+export function extractDraftContent(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const el = node as HTMLElement;
+    if (el.classList.contains('inline-emote-token')) return el.getAttribute('data-emote-code') || '';
+    if (el.tagName === 'BR') return '\n';
+    return Array.from(node.childNodes).map(extractDraftContent).join('');
+  }
+  return '';
 }
 
 export function renderChatContent(msg: ChatFeedMessage, size = 20): string {

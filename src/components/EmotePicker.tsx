@@ -13,12 +13,12 @@ import { Search } from 'lucide-react';
 import { COLORS } from './ui';
 
 type KickTab = 'global' | 'channel' | 'emoji';
-type PickedEmote = { id: string; name: string; kind: 'kick' | 'twitch'; url?: string };
+export type PickedEmote = { id: string; name: string; kind: 'kick' | 'twitch'; url?: string };
 
 export interface EmotePickerProps {
   showKick: boolean;
   showTwitch: boolean;
-  onPick: (token: string) => void;
+  onPick: (emote: PickedEmote) => void;
   onClose: () => void;
   /** The button that opens/closes this picker — excluded from the outside-click-closes check so toggling it doesn't immediately re-close itself. */
   triggerRef: React.RefObject<HTMLElement>;
@@ -69,7 +69,7 @@ export default function EmotePicker({ showKick, showTwitch, onPick, onClose, tri
     ? `https://files.kick.com/emotes/${e.id}/fullsize`
     : e.url || `https://static-cdn.jtvnw.net/emoticons/v2/${e.id}/default/dark/3.0`;
 
-  const pick = (e: PickedEmote) => onPick(e.kind === 'kick' ? `[emote:${e.id}:${e.name}]` : `[temote:${e.id}:${e.name}]`);
+  const pick = (e: PickedEmote) => onPick(e);
 
   return (
     <div ref={rootRef} style={{

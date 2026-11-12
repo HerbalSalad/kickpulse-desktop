@@ -225,6 +225,16 @@ export interface MeResponse {
   profilePicture: string | null;
   kickConnected: boolean;
   twitchConnected: boolean;
+  // kickNeedsReauth/twitchNeedsReauth (2026-11-12) — true when that
+  // platform IS connected but its stored token is flagged as stale/missing
+  // a needed scope (kickpulse-new's own needs_reauth column — real,
+  // dated gaps like checkTwitchChatWriteScope's user:write:chat check).
+  // Always false when that platform isn't connected at all — "nothing to
+  // reauth" is a distinct state from "needs reauth." Surfaced on
+  // ConnectionsPage.tsx so a stale connection shows an actionable
+  // "reconnect" prompt instead of chat replies just silently failing.
+  kickNeedsReauth: boolean;
+  twitchNeedsReauth: boolean;
   isPremium: boolean;
   isUltimate: boolean;
 }

@@ -25,10 +25,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { LayoutDashboard, ShieldAlert, Flag, ArrowDown, Reply, X, Smile, Send } from 'lucide-react';
 import { Page, Section, COLORS, Button } from '../components/ui';
-import { renderChatContent } from '../lib/chatEmotes';
+import { renderChatContent, renderDraftWithEmotes, extractDraftContent } from '../lib/chatEmotes';
 import { renderBadgesHtml, renderTwitchBadgesHtml, type SubscriberBadgeDef } from '../lib/kickBadges';
 import { useStickToBottom } from '../hooks/useStickToBottom';
-import EmotePicker from '../components/EmotePicker';
+import EmotePicker, { type PickedEmote } from '../components/EmotePicker';
 
 const PLATFORM_COLOR: Record<string, string> = { kick: '#53fc18', twitch: '#9146ff', youtube: '#ff0000', tiktok: '#ff0050' };
 
@@ -140,6 +140,21 @@ export default function DashboardPage() {
   const [emotePickerOpen, setEmotePickerOpen] = useState(false);
   const emoteButtonRef = useRef<HTMLButtonElement>(null);
 
+  // Rich draft editor (2026-11-12, direct request: "when adding emotes to
+  // the message, I would prefer they actually show as the emotes there
+  // too") — a contentEditable div, not a plain textarea, so a picked emote
+  // renders as the real <img> while composing (see chatEmotes.ts's
+  // renderDraftWithEmotes/extractDraftContent). draftText stays the single
+  // source of truth (the raw [emote:]/[temote:] token string actually sent)
+  // — lastEmittedRef distinguishes "the DOM just echoed back what I typed"
+  // (don't re-seed, which would reset the cursor) from "draftText changed
+  // for some other reason" (clearing after send, switching reply target —
+  // DOES need a re-seed), same pattern the website's own
+  // EmoteMessageEditor.tsx already uses for this exact problem.
+  const draftRef = useRef<HTMLDivElement>(null);
+  const savedRangeRef = useRef<Range | null>(null);
+  const lastEmittedRef = useRef<string | null>(null);
+
   // Defaults to whichever platform is actually connected once status loads
   // — only matters for a FRESH (non-reply) message; a reply always locks to
   // whichever platform the message being replied to came from instead.
@@ -230,13 +245,68 @@ export default function DashboardPage() {
   const canTwitch = !!me?.twitchConnected;
   const effectivePlatform = replyTarget?.platform ?? draftPlatform;
 
-  const insertEmoteToken = (token: string) => {
-    setDraftText((prev) => (prev && !/\s$/.test(prev) ? `${prev} ${token} ` : `${prev}${token} `));
-  };
+  // Re-seeds the editor's HTML only when draftText changed from OUTSIDE a
+  // keystroke (cleared after send, reply target switched) — see this
+  // component's own state-block comment on lastEmittedRef.
+  useEffect(() => {
+    if (!draftRef.current) return;
+    if (lastEmittedRef.current === draftText) return;
+    lastEmittedRef.current = draftText;
+    draftRef.current.innerHTML = renderDraftWithEmotes(draftText);
+  }, [draftText]);
+
+  const saveSelection = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && draftRef.current?.contains(sel.anchorNode)) savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+  }, []);
+
+  const emitDraftChange = useCallback(() => {
+    if (!draftRef.current) return;
+    const next = extractDraftContent(draftRef.current);
+    lastEmittedRef.current = next;
+    setDraftText(next);
+  }, []);
+
+  const insertEmote = useCallback((emote: PickedEmote) => {
+    const el = draftRef.current;
+    if (!el) return;
+    el.focus();
+    const img = document.createElement('img');
+    img.src = emote.kind === 'kick' ? `https://files.kick.com/emotes/${emote.id}/fullsize` : (emote.url || `https://static-cdn.jtvnw.net/emoticons/v2/${emote.id}/default/dark/3.0`);
+    img.alt = emote.name;
+    img.className = 'inline-emote-token';
+    img.setAttribute('data-emote-code', emote.kind === 'kick' ? `[emote:${emote.id}:${emote.name}]` : `[temote:${emote.id}:${emote.name}]`);
+    img.style.cssText = 'height:20px;width:auto;vertical-align:middle;display:inline;margin:0 1px;';
+    img.contentEditable = 'false';
+
+    const sel = window.getSelection();
+    const range = (() => {
+      if (savedRangeRef.current) { try { if (el.contains(savedRangeRef.current.startContainer)) return savedRangeRef.current; } catch { /* stale range from before a re-seed */ } }
+      const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); return r;
+    })();
+    range.deleteContents();
+    range.insertNode(img);
+    range.setStartAfter(img);
+    range.setEndAfter(img);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    savedRangeRef.current = range.cloneRange();
+    emitDraftChange();
+    setEmotePickerOpen(false);
+  }, [emitDraftChange]);
 
   const handleSend = async () => {
     const content = draftText.trim();
     if (!content || sending) return;
+    // Proactive check (2026-11-12) — a stale/under-scoped token would
+    // otherwise fail at the server with a generic rejection; this points
+    // straight at Connections instead of leaving someone to guess why a
+    // reply just silently didn't send.
+    const needsReauth = effectivePlatform === 'kick' ? me?.kickNeedsReauth : me?.twitchNeedsReauth;
+    if (needsReauth) {
+      setSendError(`Your ${effectivePlatform === 'kick' ? 'Kick' : 'Twitch'} connection needs to be reconnected — see the Connections tab.`);
+      return;
+    }
     setSending(true); setSendError(null);
     const res = await window.kickpulseDesktop.chatFeed.send({ platform: effectivePlatform, content, replyToId: replyTarget?.id ?? null });
     setSending(false);
@@ -355,18 +425,26 @@ export default function DashboardPage() {
                     <option value="twitch">Twitch</option>
                   </select>
                 )}
-                <textarea
-                  value={draftText}
-                  onChange={(e) => setDraftText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder={replyTarget ? `Reply to ${replyTarget.username}…` : `Send a message as yourself on ${effectivePlatform === 'kick' ? 'Kick' : 'Twitch'}…`}
-                  rows={1}
-                  maxLength={500}
-                  style={{
-                    flex: 1, resize: 'none', background: '#0e0e14', border: `1px solid ${COLORS.border}`, borderRadius: 8,
-                    color: COLORS.text, fontSize: 13, padding: '7px 10px', outline: 'none', fontFamily: 'inherit', minHeight: 34, maxHeight: 90,
-                  }}
-                />
+                <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
+                  <div
+                    ref={draftRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onBlur={saveSelection}
+                    onInput={emitDraftChange}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                    style={{
+                      background: '#0e0e14', border: `1px solid ${COLORS.border}`, borderRadius: 8,
+                      color: COLORS.text, fontSize: 13, padding: '7px 32px 7px 10px', outline: 'none',
+                      minHeight: 34, maxHeight: 90, overflowY: 'auto', wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+                    }}
+                  />
+                  {!draftText && (
+                    <div style={{ position: 'absolute', top: 7, left: 10, fontSize: 13, color: COLORS.textFaint, pointerEvents: 'none' }}>
+                      {replyTarget ? `Reply to ${replyTarget.username}…` : `Send a message as yourself on ${effectivePlatform === 'kick' ? 'Kick' : 'Twitch'}…`}
+                    </div>
+                  )}
+                </div>
                 <button
                   ref={emoteButtonRef} type="button" title="Emotes"
                   onClick={() => setEmotePickerOpen((o) => !o)}
@@ -384,7 +462,7 @@ export default function DashboardPage() {
                 {emotePickerOpen && (
                   <EmotePicker
                     showKick={canKick} showTwitch={canTwitch}
-                    onPick={insertEmoteToken}
+                    onPick={insertEmote}
                     onClose={() => setEmotePickerOpen(false)}
                     triggerRef={emoteButtonRef}
                   />

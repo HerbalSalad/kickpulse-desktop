@@ -222,6 +222,8 @@ declare global {
     profilePicture: string | null;
     kickConnected: boolean;
     twitchConnected: boolean;
+    kickNeedsReauth: boolean;
+    twitchNeedsReauth: boolean;
     isPremium: boolean;
     isUltimate: boolean;
   }

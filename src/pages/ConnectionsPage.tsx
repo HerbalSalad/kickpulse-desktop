@@ -215,11 +215,17 @@ export default function ConnectionsPage({ userId }: ConnectionsPageProps) {
     <Page title="Connections" icon={<Link2 size={22} color={COLORS.accent} />} subtitle="Platforms, bot accounts, and everything else your stream connects to.">
       {/* Connected Platforms */}
       <Section title="Connected Platforms">
+        <p style={{ fontSize: 12, color: COLORS.textDim, marginBottom: 10 }}>
+          Connecting Kick or Twitch here is the ONE step each needs for live events, reading chat, AND
+          replying/sending chat as yourself from the Dashboard — there's no separate login for chat.
+          Kick Clips and your own bot account (below) are the only two things with their own extra step.
+        </p>
         <PlatformRow
           icon={<span style={{ color: KICK_COLOR, fontWeight: 900, fontSize: 13 }}>K</span>}
           name="Kick" color={KICK_COLOR}
           connected={!!me?.kickConnected} username={me?.username || undefined}
           onConnect={linkKick} connecting={linking === 'kick'}
+          needsReauth={!!me?.kickNeedsReauth}
         />
         <PlatformRow
           icon={<span style={{ color: TWITCH_COLOR, fontWeight: 900, fontSize: 13 }}>T</span>}
@@ -227,6 +233,7 @@ export default function ConnectionsPage({ userId }: ConnectionsPageProps) {
           connected={!!me?.twitchConnected} username={me?.twitchUsername || undefined}
           onConnect={linkTwitch} connecting={linking === 'twitch'}
           onDisconnect={me?.twitchConnected ? disconnectTwitch : undefined} disconnecting={disconnectingTwitch}
+          needsReauth={!!me?.twitchNeedsReauth}
         />
 
         {/* YouTube — typed handle, no OAuth (no official API at all — see
@@ -425,9 +432,9 @@ export default function ConnectionsPage({ userId }: ConnectionsPageProps) {
   );
 }
 
-function PlatformRow({ icon, name, color, connected, username, onConnect, connecting, onDisconnect, disconnecting }: {
+function PlatformRow({ icon, name, color, connected, username, onConnect, connecting, onDisconnect, disconnecting, needsReauth }: {
   icon: React.ReactNode; name: string; color: string; connected: boolean; username?: string;
-  onConnect: () => void; connecting: boolean; onDisconnect?: () => void; disconnecting?: boolean;
+  onConnect: () => void; connecting: boolean; onDisconnect?: () => void; disconnecting?: boolean; needsReauth?: boolean;
 }) {
   return (
     <div style={rowBox}>
@@ -441,7 +448,18 @@ function PlatformRow({ icon, name, color, connected, username, onConnect, connec
             {connected && username && <div style={{ fontSize: 11, color }}>@{username}</div>}
           </div>
         </div>
-        {connected ? (
+        {connected && needsReauth ? (
+          // needsReauth (2026-11-12) — the connection is real but a stored
+          // token went stale or is missing a scope this app now needs (e.g.
+          // chat replies' user:write:chat) — same "Connect" OAuth flow fixes
+          // it; re-running it re-grants whatever's currently missing and
+          // clears this flag server-side (migrations/2026-08-11_clear_
+          // needs_reauth_on_login.sql).
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.warn }}>Needs reconnect</span>
+            <Button variant="primary" onClick={onConnect} disabled={connecting}>{connecting ? 'Connecting…' : 'Reconnect →'}</Button>
+          </div>
+        ) : connected ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={connectedPill(color)}>Connected ✓</span>
             {onDisconnect && <Button onClick={onDisconnect} disabled={disconnecting}>{disconnecting ? 'Disconnecting…' : 'Disconnect'}</Button>}
