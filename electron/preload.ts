@@ -356,6 +356,8 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
     approveDonation: (id: string): Promise<any> => ipcRenderer.invoke('moderation:approve-donation', id),
     dismissDonation: (id: string): Promise<any> => ipcRenderer.invoke('moderation:dismiss-donation', id),
     action: (kind: 'timeout' | 'ban' | 'unban', body: Record<string, any>): Promise<any> => ipcRenderer.invoke('moderation:action', kind, body),
+    deleteMessage: (platform: 'kick' | 'twitch', messageId: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('moderation:delete-message', platform, messageId),
     // Twitch-only — Kick has no chat-mode API (see routes/moderation.js on the server).
     getChatSettings: (): Promise<any> => ipcRenderer.invoke('moderation:get-chat-settings'),
     setChatMode: (body: Record<string, any>): Promise<any> => ipcRenderer.invoke('moderation:set-chat-mode', body),

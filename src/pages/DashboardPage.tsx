@@ -23,7 +23,7 @@
 // actively chatting, filtered by the streamer's own configured sensitivity
 // (/community-bans page's Threat Warnings setting).
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { LayoutDashboard, ShieldAlert, Flag, ArrowDown, Reply, X, Smile, Send } from 'lucide-react';
+import { LayoutDashboard, ShieldAlert, Flag, ArrowDown, Reply, X, Smile, Send, Clock, Ban, Trash2 } from 'lucide-react';
 import { Page, Section, COLORS, Button } from '../components/ui';
 import { renderChatContent, renderDraftWithEmotes, extractDraftContent } from '../lib/chatEmotes';
 import { renderBadgesHtml, renderTwitchBadgesHtml, type SubscriberBadgeDef } from '../lib/kickBadges';
@@ -115,6 +115,28 @@ function JumpToLatestButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+// Per-message Reply/Timeout/Ban/Delete icons (2026-11-13, direct request:
+// "small icons at the far right of the messages, same line") — sitting
+// right after the message text span, which is `flex: 1` (see the row's own
+// JSX), so this cluster naturally lands at the row's true right edge
+// regardless of how short or long the message/username is.
+function RowIconButton({ children, onClick, title, disabled, danger }: {
+  children: React.ReactNode; onClick: () => void; title: string; disabled?: boolean; danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick} title={title} disabled={disabled}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        width: 20, height: 20, padding: 0, border: 'none', background: 'none',
+        color: danger ? '#f87171' : COLORS.textFaint, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function DashboardPage() {
   const [status, setStatus] = useState<DesktopStatus | null>(null);
   const [messages, setMessages] = useState<ChatFeedMessage[]>([]);
@@ -144,6 +166,15 @@ export default function DashboardPage() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [emotePickerOpen, setEmotePickerOpen] = useState(false);
   const emoteButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Quick-moderation icons (2026-11-13, direct request: "it could also be
+  // useful to have a timeout, ban, or delete message option on the
+  // messages... small icons at the far right") — busyAction tracks exactly
+  // one message+action in flight at a time (keyed "<id>:<action>") so a
+  // double-click can't fire the same action twice; a real network round
+  // trip per click is unavoidable since these are real moderation calls
+  // (not an optimistic local toggle like, say, a Toggle switch would be).
+  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   // Rich draft editor (2026-11-12, direct request: "when adding emotes to
   // the message, I would prefer they actually show as the emotes there
@@ -344,6 +375,49 @@ export default function DashboardPage() {
     if (results.some((r) => r.ok)) { setDraftText(''); setReplyTarget(null); setEmotePickerOpen(false); }
   };
 
+  // 10 minutes — same default this app's own standalone Moderation page
+  // already uses (ModerationPage.tsx's durationSeconds state), so a quick
+  // one-click timeout here lands on the exact same duration a streamer
+  // would get typing it in manually there. Confirmation deliberately
+  // skipped (unlike quickBan below) — a timeout is short and trivially
+  // undoable, which is exactly the "small icon, no friction" shape this was
+  // asked for; a ban gets one because it's materially harder to walk back.
+  const QUICK_TIMEOUT_SECONDS = 600;
+
+  const quickTimeout = async (m: ChatFeedMessage) => {
+    const key = `${m.id}:timeout`;
+    if (busyAction) return;
+    setBusyAction(key);
+    const res = await window.kickpulseDesktop.moderation.action('timeout', {
+      platform: m.platform, targetUsername: m.username, durationSeconds: QUICK_TIMEOUT_SECONDS, reason: 'Timed out from the Live Chat feed',
+    }).catch((e: any) => ({ ok: false, error: e?.message }));
+    setBusyAction(null);
+    if (res?.error) alert(res.error);
+  };
+
+  const quickBan = async (m: ChatFeedMessage) => {
+    const key = `${m.id}:ban`;
+    if (busyAction) return;
+    if (!confirm(`Ban ${m.username} on ${platformLabel(m.platform as 'kick' | 'twitch')}?`)) return;
+    setBusyAction(key);
+    const res = await window.kickpulseDesktop.moderation.action('ban', {
+      platform: m.platform, targetUsername: m.username, reason: 'Banned from the Live Chat feed',
+    }).catch((e: any) => ({ ok: false, error: e?.message }));
+    setBusyAction(null);
+    if (res?.error) alert(res.error);
+  };
+
+  const quickDelete = async (m: ChatFeedMessage) => {
+    const key = `${m.id}:delete`;
+    if (busyAction) return;
+    setBusyAction(key);
+    const res = await window.kickpulseDesktop.moderation.deleteMessage(m.platform as 'kick' | 'twitch', m.id)
+      .catch((e: any) => ({ ok: false, error: e?.message }));
+    setBusyAction(null);
+    if (!res.ok) { alert(res.error || 'Failed to delete message'); return; }
+    setMessages((prev) => prev.filter((x) => x.id !== m.id));
+  };
+
   return (
     <Page title="Dashboard" icon={<LayoutDashboard size={22} color={COLORS.accent} />} subtitle="Account status, live chat, and every stream event — all in one place." fullBleed>
       <Section style={{ marginBottom: 12, flexShrink: 0 }}>
@@ -411,17 +485,35 @@ export default function DashboardPage() {
                     dangerouslySetInnerHTML={{ __html: renderChatContent(m) }}
                   />
                   {((m.platform === 'kick' && canKick) || (m.platform === 'twitch' && canTwitch)) && (
-                    <button
-                      onClick={() => setReplyTarget({ platform: m.platform as 'kick' | 'twitch', id: m.id, username: m.username })}
-                      title={`Reply to ${m.username}`}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                        width: 20, height: 20, padding: 0, marginLeft: 4, border: 'none', background: 'none',
-                        color: COLORS.textFaint, cursor: 'pointer',
-                      }}
-                    >
-                      <Reply size={13} />
-                    </button>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, flexShrink: 0, marginLeft: 4 }}>
+                      <RowIconButton
+                        title={`Reply to ${m.username}`}
+                        onClick={() => setReplyTarget({ platform: m.platform as 'kick' | 'twitch', id: m.id, username: m.username })}
+                      >
+                        <Reply size={13} />
+                      </RowIconButton>
+                      <RowIconButton
+                        title={`Timeout ${m.username} (10 min)`}
+                        disabled={busyAction === `${m.id}:timeout`}
+                        onClick={() => quickTimeout(m)}
+                      >
+                        <Clock size={13} />
+                      </RowIconButton>
+                      <RowIconButton
+                        title={`Ban ${m.username}`} danger
+                        disabled={busyAction === `${m.id}:ban`}
+                        onClick={() => quickBan(m)}
+                      >
+                        <Ban size={13} />
+                      </RowIconButton>
+                      <RowIconButton
+                        title="Delete message" danger
+                        disabled={busyAction === `${m.id}:delete`}
+                        onClick={() => quickDelete(m)}
+                      >
+                        <Trash2 size={13} />
+                      </RowIconButton>
+                    </span>
                   )}
                 </div>
               );

@@ -603,6 +603,19 @@ export function moderationAction(apiKey: string, kind: 'timeout' | 'ban' | 'unba
   return request(`/moderation/${kind}`, apiKey, { method: 'POST', body: JSON.stringify(body) });
 }
 
+// deleteChatMessage (2026-11-13, direct request: "a timeout, ban, or
+// delete message option on the messages" — small icons right on the Live
+// Chat feed, not just the standalone Moderation form) — real per-platform
+// delete, same proven endpoints the spam filter's own retroactive delete
+// already uses server-side (DELETE /public/v1/chat/{id} for Kick, Twitch's
+// Delete Chat Messages API for Twitch). Both routes were Kick-only/
+// authenticateKick-gated before this — widened/added specifically for
+// this app, same precedent as every other route here.
+export function deleteChatMessage(apiKey: string, platform: 'kick' | 'twitch', messageId: string): Promise<void> {
+  const path = platform === 'kick' ? `/chat/message/${messageId}` : `/chat/message-twitch/${messageId}`;
+  return request(path, apiKey, { method: 'DELETE' });
+}
+
 // Twitch-only (Kick has no chat-mode API at all, confirmed against Kick's
 // own public API docs — see routes/moderation.js's own header on the
 // server). These two just forward to the server's already-built

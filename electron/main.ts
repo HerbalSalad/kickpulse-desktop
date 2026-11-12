@@ -37,7 +37,7 @@ import {
   listCountersFull, createCounter, adjustCounter, deleteCounter,
   getSpamFilter, saveSpamFilter, getChatbotSettings, saveChatbotSettings,
   testSendChatAlert, testSendLevelUp,
-  getModerationPending, resolveSongRequest, resolveRedemption, approveDonation, dismissDonation, moderationAction,
+  getModerationPending, resolveSongRequest, resolveRedemption, approveDonation, dismissDonation, moderationAction, deleteChatMessage,
   getChatSettings, setChatMode, getViewerInfo, getCommunityBanSettings, setCommunityBanSettings, getKickSubscriberBadges,
   sendKickChatAsUser, sendTwitchChatAsUser, getTwitchEmotes,
   getCommunityBanList, applyCommunityBans, unbanCommunityBanEntry, unbanAllCommunityBans,
@@ -1361,6 +1361,19 @@ app.whenReady().then(async () => {
   ipcMain.handle('moderation:approve-donation', (_e, id: string) => approveDonation(requireApiKey(), id));
   ipcMain.handle('moderation:dismiss-donation', (_e, id: string) => dismissDonation(requireApiKey(), id));
   ipcMain.handle('moderation:action', (_e, kind, body) => moderationAction(requireApiKey(), kind, body));
+  // Delete-message icon (2026-11-13) on the Dashboard's Live Chat feed —
+  // messageId strips this app's own 'tw-' prefix for Twitch first (see
+  // chat-feed.ts/handleWsMessage — Kick's own message_id already arrives
+  // unprefixed, so there's nothing to strip on that side).
+  ipcMain.handle('moderation:delete-message', async (_e, platform: 'kick' | 'twitch', messageId: string) => {
+    try {
+      const realId = platform === 'twitch' ? messageId.replace(/^tw-/, '') : messageId;
+      await deleteChatMessage(requireApiKey(), platform, realId);
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Failed to delete message' };
+    }
+  });
   ipcMain.handle('moderation:get-chat-settings', () => getChatSettings(requireApiKey()));
   ipcMain.handle('moderation:set-chat-mode', (_e, body) => setChatMode(requireApiKey(), body));
 

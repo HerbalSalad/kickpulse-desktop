@@ -540,6 +540,7 @@ declare global {
         approveDonation: (id: string) => Promise<any>;
         dismissDonation: (id: string) => Promise<any>;
         action: (kind: 'timeout' | 'ban' | 'unban', body: Record<string, any>) => Promise<any>;
+        deleteMessage: (platform: 'kick' | 'twitch', messageId: string) => Promise<{ ok: boolean; error?: string }>;
         getChatSettings: () => Promise<any>;
         setChatMode: (body: Record<string, any>) => Promise<any>;
       };
