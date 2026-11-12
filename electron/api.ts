@@ -80,6 +80,43 @@ export function getViewerInfo(apiKey: string, usernames: string[], platform: 'ki
   return request<Record<string, ViewerInfo>>(`/desktop/viewer-info?${qs}`, apiKey);
 }
 
+// sendKickChatAsUser/sendTwitchChatAsUser (2026-11-11, direct request: "users
+// would like to be able to actually reply to their chats") — the Live Chat
+// feed's reply box. Both hit real, already-working send pipelines on the
+// website (routes/commands.js's own bot-reply machinery already proved the
+// shape) that were widened/added specifically so this app's API key could
+// call them — /send-chat already backed PulseWatch's own "chat as yourself"
+// feature, just gated behind a literal Kick OAuth bearer token before this;
+// /send-chat-twitch is the new Twitch counterpart, same "post as the
+// streamer's own account" shape. No new OAuth login of any kind needed —
+// the server already holds working Kick/Twitch tokens for this account from
+// the same account-linking that got the API key in the first place.
+export function sendKickChatAsUser(apiKey: string, body: { content: string; broadcasterUserId: string; replyToMessageId?: string | null }): Promise<{ success: boolean; data?: unknown }> {
+  return request('/send-chat', apiKey, {
+    method: 'POST',
+    body: JSON.stringify({
+      content: body.content,
+      broadcaster_user_id: body.broadcasterUserId,
+      reply_to_message_id: body.replyToMessageId || undefined,
+    }),
+  });
+}
+export function sendTwitchChatAsUser(apiKey: string, body: { content: string; replyParentMessageId?: string | null }): Promise<{ success: boolean; data?: unknown }> {
+  return request('/send-chat-twitch', apiKey, {
+    method: 'POST',
+    body: JSON.stringify({ content: body.content, reply_parent_message_id: body.replyParentMessageId || undefined }),
+  });
+}
+
+// getTwitchEmotes — channel + global Twitch emotes for the reply box's emote
+// picker (routes/server.js's own /twitch-emotes, same route the website's
+// EmoteMessageEditor.tsx already uses — widened to accept this app's API
+// key the same way getCommunityBanSettings's own route already was).
+export interface TwitchEmoteInfo { id: string; name: string; url?: string }
+export function getTwitchEmotes(apiKey: string): Promise<{ channelEmotes: TwitchEmoteInfo[]; globalEmotes: TwitchEmoteInfo[] }> {
+  return request('/twitch-emotes', apiKey);
+}
+
 // getCommunityBanSettings — the streamer's own "how sensitive should threat
 // warnings be" choice (set on the website's /community-bans page). Hits the
 // same /community-bans/settings route the website's own page uses —

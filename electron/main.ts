@@ -23,6 +23,7 @@ import {
   pushChatMessage, pushEvent, getRecentChat, getRecentEvents, clearAll as clearChatFeed,
   summarizeKickEvent, summarizeTwitchEvent, KNOWN_KICK_EVENT_TYPES, KNOWN_TWITCH_EVENT_TYPES,
 } from './chat-feed';
+import { getKickEmotes } from './kick-emotes';
 import {
   getMe, getJumpscareConfig, getScenesConfig, reportObsState, reportObsSources, reportObsFilters,
   reportObzidianState, reportObzidianSources, reportObzidianFilters,
@@ -38,6 +39,7 @@ import {
   testSendChatAlert, testSendLevelUp,
   getModerationPending, resolveSongRequest, resolveRedemption, approveDonation, dismissDonation, moderationAction,
   getChatSettings, setChatMode, getViewerInfo, getCommunityBanSettings, setCommunityBanSettings, getKickSubscriberBadges,
+  sendKickChatAsUser, sendTwitchChatAsUser, getTwitchEmotes,
   getCommunityBanList, applyCommunityBans, unbanCommunityBanEntry, unbanAllCommunityBans,
   getViewerFlags, addViewerFlag, removeViewerFlag, getBanSquads, createBanSquad, joinBanSquad, leaveBanSquad,
   getYoutubeStatus, connectYoutube, connectYoutubeSecondary, disconnectYoutube, disconnectYoutubeSecondary,
@@ -1162,6 +1164,12 @@ app.whenReady().then(async () => {
     if (res.ok) reportLightDevicesNow();
     return res;
   });
+  ipcMain.handle('lights:discover-magichome', () => lights.discoverMagicHomeOnNetwork());
+  ipcMain.handle('lights:add-magichome', async (_e, ip: string, name?: string) => {
+    const res = await lights.addMagicHomeDevice(ip, name);
+    if (res.ok) reportLightDevicesNow();
+    return res;
+  });
   ipcMain.handle('lights:discover-hue-bridges', () => lights.discoverHueBridges());
   ipcMain.handle('lights:pair-hue-bridge', (_e, ip: string) => lights.pairHueBridge(ip));
   ipcMain.handle('lights:list-paired-hue-bridges', () => lights.listPairedHueBridges());
@@ -1367,6 +1375,44 @@ app.whenReady().then(async () => {
   ipcMain.handle('chat-feed:get-viewer-info', (_e, usernames: string[], platform: 'kick' | 'twitch') =>
     getViewerInfo(requireApiKey(), usernames, platform));
   ipcMain.handle('chat-feed:get-threat-settings', () => getCommunityBanSettings(requireApiKey()));
+
+  // Reply box (2026-11-11, direct request: "users would like to be able to
+  // actually reply to their chats") — sends AS THE STREAMER'S OWN connected
+  // account (not a bot), reusing /send-chat's existing "user mode" and its
+  // new Twitch counterpart /send-chat-twitch — see electron/api.ts's own
+  // comment for why no new OAuth login was needed for either. replyToId is
+  // the real message id a chat row carries (kickpulse-new's chat.message.
+  // sent payload / Twitch IRC's own tag), threaded through as a native
+  // reply on whichever platform supports it. Twitch ids carry this app's
+  // own 'tw-' prefix (see chat-feed.ts/main.ts's handleWsMessage) that has
+  // to come back off before it's a real Twitch message id again.
+  ipcMain.handle('chat-feed:send', async (_e, body: { platform: 'kick' | 'twitch'; content: string; replyToId?: string | null }) => {
+    const apiKey = requireApiKey();
+    try {
+      if (body.platform === 'kick') {
+        const broadcasterUserId = currentStatus.me?.kickBroadcasterId;
+        if (!broadcasterUserId) return { ok: false, error: 'No Kick account linked' };
+        await sendKickChatAsUser(apiKey, { content: body.content, broadcasterUserId, replyToMessageId: body.replyToId || null });
+      } else {
+        const replyParentMessageId = body.replyToId ? body.replyToId.replace(/^tw-/, '') : null;
+        await sendTwitchChatAsUser(apiKey, { content: body.content, replyParentMessageId });
+      }
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Failed to send message' };
+    }
+  });
+
+  // Emote picker (bonus ask: "we fetch the emotes really well with the chat
+  // bot, global, emojis and the users own emotes are all available") — Kick
+  // needs no auth at all (kick-emotes.ts hits kick.com's own public
+  // endpoint directly), keyed off the connected streamer's own username;
+  // Twitch goes through the website's /twitch-emotes route.
+  ipcMain.handle('chat-feed:get-kick-emotes', () => {
+    const slug = currentStatus.me?.username;
+    return slug ? getKickEmotes(slug) : Promise.resolve({ channelEmotes: [], globalEmotes: [], emojis: [] });
+  });
+  ipcMain.handle('chat-feed:get-twitch-emotes', () => getTwitchEmotes(requireApiKey()));
 
   // Community Bans (2026-10-20, native desktop page).
   ipcMain.handle('community-bans:list', () => getCommunityBanList(requireApiKey()));

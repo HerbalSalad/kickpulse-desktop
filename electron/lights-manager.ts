@@ -6,6 +6,7 @@ import * as wled from './lights/wled';
 import * as hue from './lights/hue';
 import * as govee from './lights/govee';
 import * as elgato from './lights/elgato';
+import * as magichome from './lights/magichome';
 import type { LightDeviceConfig, LightState } from './types';
 
 function uid(): string {
@@ -47,6 +48,14 @@ export async function listLiveStates(): Promise<LightState[]> {
       // lights with no RGB concept at all, not a readback gap.
       const s = d.ip ? await elgato.getElgatoState(d.ip) : null;
       return { id: d.id, provider: 'elgato', name: d.name, reachable: !!s, on: s?.on ?? false, brightness: s?.brightness ?? 0, color: 'ffffff' };
+    }
+    if (d.provider === 'magichome') {
+      // Unlike Govee, this protocol's own state-query reply genuinely
+      // reports current on/RGB (see lights/magichome.ts) — brightness is
+      // derived from those RGB bytes rather than read as its own field,
+      // since the wire protocol has no separate brightness channel.
+      const s = d.ip ? await magichome.getMagicHomeState(d.ip) : null;
+      return { id: d.id, provider: 'magichome', name: d.name, reachable: !!s, on: s?.on ?? false, brightness: s?.brightness ?? 0, color: s?.color ?? 'ffffff' };
     }
     // hue
     const bridge = cfg.hueBridges.find((b) => b.bridgeIp === d.bridgeIp);
@@ -112,6 +121,26 @@ export async function addElgatoDevice(ip: string, nameOverride?: string): Promis
 // lights/elgato.ts's own header for why a subnet sweep was chosen here too).
 export function discoverElgatoOnNetwork(onProgress?: (scanned: number, total: number) => void) {
   return elgato.discoverElgatoDevices(onProgress);
+}
+
+// Magic Home / LuYa (2026-11-11, direct request: "add magic home and luya
+// support for lights") — see lights/magichome.ts's own header for the real
+// protocol writeup and why these two brand names share one implementation.
+// testMagicHome validates the IP (a real TCP state-query round trip) before
+// saving, same "don't save a device that never answered" shape WLED/Elgato
+// already use.
+export async function addMagicHomeDevice(ip: string, nameOverride?: string): Promise<{ ok: boolean; error?: string; device?: LightDeviceConfig }> {
+  const test = await magichome.testMagicHome(ip);
+  if (!test.ok) return { ok: false, error: test.error };
+  const cfg = loadConfig();
+  if (cfg.lightDevices.some((d) => d.provider === 'magichome' && d.ip === ip)) return { ok: false, error: 'That device is already added' };
+  const device: LightDeviceConfig = { id: uid(), provider: 'magichome', name: nameOverride || ip, ip };
+  saveConfig({ lightDevices: [...cfg.lightDevices, device] });
+  return { ok: true, device };
+}
+
+export function discoverMagicHomeOnNetwork() {
+  return magichome.discoverMagicHomeDevices();
 }
 
 export async function discoverHueBridges() {
@@ -192,6 +221,11 @@ async function setOneDevice(d: LightDeviceConfig, patch: LightStatePatch): Promi
   if (d.provider === 'elgato') {
     if (!d.ip) return;
     await elgato.setElgatoState(d.ip, patch); // color/transitionMs have no equivalent here — ignored, see lights/elgato.ts
+    return;
+  }
+  if (d.provider === 'magichome') {
+    if (!d.ip) return;
+    await magichome.setMagicHomeState(d.ip, patch); // transitionMs has no equivalent here — ignored
     return;
   }
   const cfg = loadConfig();

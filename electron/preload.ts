@@ -38,6 +38,9 @@ import type { DiscoveredBridge, HueLightInfo, PairResult } from './lights/hue';
 import type { WledDiscoveryResult } from './lights/wled';
 import type { ElgatoDiscoveryResult } from './lights/elgato';
 import type { GoveeDiscoveryOutcome } from './lights/govee';
+import type { MagicHomeDiscoveryResult } from './lights/magichome';
+import type { KickEmoteCatalog } from './kick-emotes';
+import type { TwitchEmoteInfo } from './api';
 
 contextBridge.exposeInMainWorld('kickpulseOverlay', {
   onPlayJumpscare: (cb: (payload: JumpscarePayload) => void) => {
@@ -194,6 +197,9 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
   lightsDiscoverGovee: (): Promise<GoveeDiscoveryOutcome> => ipcRenderer.invoke('lights:discover-govee'),
   lightsAddGovee: (ip: string, name?: string, sku?: string): Promise<{ ok: boolean; error?: string; device?: LightDeviceConfig }> =>
     ipcRenderer.invoke('lights:add-govee', ip, name, sku),
+  lightsDiscoverMagicHome: (): Promise<MagicHomeDiscoveryResult[]> => ipcRenderer.invoke('lights:discover-magichome'),
+  lightsAddMagicHome: (ip: string, name?: string): Promise<{ ok: boolean; error?: string; device?: LightDeviceConfig }> =>
+    ipcRenderer.invoke('lights:add-magichome', ip, name),
   lightsDiscoverHueBridges: (): Promise<DiscoveredBridge[]> => ipcRenderer.invoke('lights:discover-hue-bridges'),
   lightsPairHueBridge: (ip: string): Promise<PairResult> => ipcRenderer.invoke('lights:pair-hue-bridge', ip),
   lightsListPairedHueBridges: (): Promise<HueBridgeConfig[]> => ipcRenderer.invoke('lights:list-paired-hue-bridges'),
@@ -389,6 +395,11 @@ contextBridge.exposeInMainWorld('kickpulseDesktop', {
       getThreatSettings: (): Promise<{ minThreatLevelToWarn: number }> => ipcRenderer.invoke('chat-feed:get-threat-settings'),
       getKickSubscriberBadges: (slug: string): Promise<{ badges: { months: number; badge_image?: { src?: string } }[] }> =>
         ipcRenderer.invoke('chat-feed:get-kick-subscriber-badges', slug),
+      send: (body: { platform: 'kick' | 'twitch'; content: string; replyToId?: string | null }): Promise<{ ok: boolean; error?: string }> =>
+        ipcRenderer.invoke('chat-feed:send', body),
+      getKickEmotes: (): Promise<KickEmoteCatalog> => ipcRenderer.invoke('chat-feed:get-kick-emotes'),
+      getTwitchEmotes: (): Promise<{ channelEmotes: TwitchEmoteInfo[]; globalEmotes: TwitchEmoteInfo[] }> =>
+        ipcRenderer.invoke('chat-feed:get-twitch-emotes'),
     };
   })(),
 

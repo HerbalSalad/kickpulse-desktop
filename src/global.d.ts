@@ -97,7 +97,7 @@ declare global {
     triggerImmediately: boolean;
   }
 
-  type LightProvider = 'wled' | 'hue' | 'govee' | 'elgato';
+  type LightProvider = 'wled' | 'hue' | 'govee' | 'elgato' | 'magichome';
 
   interface HueBridgeConfig {
     bridgeIp: string;
@@ -190,6 +190,27 @@ declare global {
     ok: boolean;
     devices: GoveeDiscoveryResult[];
     error?: string;
+  }
+
+  interface MagicHomeDiscoveryResult {
+    ip: string;
+    id: string;
+    model: string;
+  }
+
+  interface KickEmoteInfo {
+    id: string;
+    name: string;
+  }
+  interface KickEmoteCatalog {
+    channelEmotes: KickEmoteInfo[];
+    globalEmotes: KickEmoteInfo[];
+    emojis: KickEmoteInfo[];
+  }
+  interface TwitchEmoteInfo {
+    id: string;
+    name: string;
+    url?: string;
   }
 
   interface MeResponse {
@@ -407,6 +428,8 @@ declare global {
       onLightsDiscoverElgatoProgress: (cb: (p: { scanned: number; total: number }) => void) => void;
       lightsDiscoverGovee: () => Promise<GoveeDiscoveryOutcome>;
       lightsAddGovee: (ip: string, name?: string, sku?: string) => Promise<IpcResult & { device?: LightDeviceConfig }>;
+      lightsDiscoverMagicHome: () => Promise<MagicHomeDiscoveryResult[]>;
+      lightsAddMagicHome: (ip: string, name?: string) => Promise<IpcResult & { device?: LightDeviceConfig }>;
       lightsDiscoverHueBridges: () => Promise<DiscoveredBridge[]>;
       lightsPairHueBridge: (ip: string) => Promise<PairResult>;
       lightsListPairedHueBridges: () => Promise<HueBridgeConfig[]>;
@@ -526,6 +549,9 @@ declare global {
         getViewerInfo: (usernames: string[], platform: 'kick' | 'twitch') => Promise<Record<string, ViewerInfo>>;
         getThreatSettings: () => Promise<{ minThreatLevelToWarn: number }>;
         getKickSubscriberBadges: (slug: string) => Promise<{ badges: { months: number; badge_image?: { src?: string } }[] }>;
+        send: (body: { platform: 'kick' | 'twitch'; content: string; replyToId?: string | null }) => Promise<{ ok: boolean; error?: string }>;
+        getKickEmotes: () => Promise<KickEmoteCatalog>;
+        getTwitchEmotes: () => Promise<{ channelEmotes: TwitchEmoteInfo[]; globalEmotes: TwitchEmoteInfo[] }>;
       };
 
       communityBans: {

@@ -23,11 +23,12 @@
 // actively chatting, filtered by the streamer's own configured sensitivity
 // (/community-bans page's Threat Warnings setting).
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { LayoutDashboard, ShieldAlert, Flag, ArrowDown } from 'lucide-react';
-import { Page, Section, COLORS } from '../components/ui';
+import { LayoutDashboard, ShieldAlert, Flag, ArrowDown, Reply, X, Smile, Send } from 'lucide-react';
+import { Page, Section, COLORS, Button } from '../components/ui';
 import { renderChatContent } from '../lib/chatEmotes';
 import { renderBadgesHtml, renderTwitchBadgesHtml, type SubscriberBadgeDef } from '../lib/kickBadges';
 import { useStickToBottom } from '../hooks/useStickToBottom';
+import EmotePicker from '../components/EmotePicker';
 
 const PLATFORM_COLOR: Record<string, string> = { kick: '#53fc18', twitch: '#9146ff', youtube: '#ff0000', tiktok: '#ff0050' };
 
@@ -125,6 +126,28 @@ export default function DashboardPage() {
   const eventStick = useStickToBottom<HTMLDivElement>([events]);
   const knownUsernames = useRef<Set<string>>(new Set());
 
+  // Reply box (2026-11-11, direct request: "users would like to be able to
+  // actually reply to their chats") — replyTarget locks the composer to
+  // whichever platform a specific message came from and threads the reply
+  // natively (reply_to_message_id/reply_parent_message_id — both platforms
+  // support it); with no reply target, draftPlatform picks between whatever
+  // platforms are actually connected for a fresh, unthreaded message.
+  const [replyTarget, setReplyTarget] = useState<{ platform: 'kick' | 'twitch'; id: string; username: string } | null>(null);
+  const [draftPlatform, setDraftPlatform] = useState<'kick' | 'twitch'>('kick');
+  const [draftText, setDraftText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [emotePickerOpen, setEmotePickerOpen] = useState(false);
+  const emoteButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Defaults to whichever platform is actually connected once status loads
+  // — only matters for a FRESH (non-reply) message; a reply always locks to
+  // whichever platform the message being replied to came from instead.
+  useEffect(() => {
+    if (status?.me?.kickConnected) setDraftPlatform('kick');
+    else if (status?.me?.twitchConnected) setDraftPlatform('twitch');
+  }, [status?.me?.kickConnected, status?.me?.twitchConnected]);
+
   useEffect(() => {
     window.kickpulseDesktop.getStatus().then((s) => {
       setStatus(s);
@@ -203,6 +226,23 @@ export default function DashboardPage() {
   };
 
   const me = status?.me;
+  const canKick = !!me?.kickConnected;
+  const canTwitch = !!me?.twitchConnected;
+  const effectivePlatform = replyTarget?.platform ?? draftPlatform;
+
+  const insertEmoteToken = (token: string) => {
+    setDraftText((prev) => (prev && !/\s$/.test(prev) ? `${prev} ${token} ` : `${prev}${token} `));
+  };
+
+  const handleSend = async () => {
+    const content = draftText.trim();
+    if (!content || sending) return;
+    setSending(true); setSendError(null);
+    const res = await window.kickpulseDesktop.chatFeed.send({ platform: effectivePlatform, content, replyToId: replyTarget?.id ?? null });
+    setSending(false);
+    if (!res.ok) { setSendError(res.error || 'Failed to send'); return; }
+    setDraftText(''); setReplyTarget(null); setEmotePickerOpen(false);
+  };
 
   return (
     <Page title="Dashboard" icon={<LayoutDashboard size={22} color={COLORS.accent} />} subtitle="Account status, live chat, and every stream event — all in one place." fullBleed>
@@ -267,14 +307,92 @@ export default function DashboardPage() {
                     {warn && <ViewerBadge info={info} />}
                   </span>
                   <span
-                    style={{ color: COLORS.textDim, wordBreak: 'break-word' }}
+                    style={{ color: COLORS.textDim, wordBreak: 'break-word', flex: 1 }}
                     dangerouslySetInnerHTML={{ __html: renderChatContent(m) }}
                   />
+                  {((m.platform === 'kick' && canKick) || (m.platform === 'twitch' && canTwitch)) && (
+                    <button
+                      onClick={() => setReplyTarget({ platform: m.platform as 'kick' | 'twitch', id: m.id, username: m.username })}
+                      title={`Reply to ${m.username}`}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        width: 20, height: 20, padding: 0, marginLeft: 4, border: 'none', background: 'none',
+                        color: COLORS.textFaint, cursor: 'pointer',
+                      }}
+                    >
+                      <Reply size={13} />
+                    </button>
+                  )}
                 </div>
               );
             })}
           </div>
           {!chatStick.isStuck && <JumpToLatestButton onClick={chatStick.jumpToBottom} />}
+          {(canKick || canTwitch) && (
+            <div style={{ flexShrink: 0, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${COLORS.border}` }}>
+              {replyTarget && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: COLORS.textDim, marginBottom: 6 }}>
+                  Replying to <strong style={{ color: COLORS.text }}>{replyTarget.username}</strong> on {replyTarget.platform === 'kick' ? 'Kick' : 'Twitch'}
+                  <button onClick={() => setReplyTarget(null)} title="Cancel reply" style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16,
+                    border: 'none', background: 'none', color: COLORS.textFaint, cursor: 'pointer', padding: 0,
+                  }}>
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', position: 'relative' }}>
+                {!replyTarget && canKick && canTwitch && (
+                  <select
+                    value={draftPlatform}
+                    onChange={(e) => setDraftPlatform(e.target.value as 'kick' | 'twitch')}
+                    style={{
+                      background: '#0e0e14', border: `1px solid ${COLORS.border}`, borderRadius: 8, color: COLORS.text,
+                      fontSize: 12, padding: '7px 6px', outline: 'none', flexShrink: 0, cursor: 'pointer',
+                    }}
+                  >
+                    <option value="kick">Kick</option>
+                    <option value="twitch">Twitch</option>
+                  </select>
+                )}
+                <textarea
+                  value={draftText}
+                  onChange={(e) => setDraftText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                  placeholder={replyTarget ? `Reply to ${replyTarget.username}…` : `Send a message as yourself on ${effectivePlatform === 'kick' ? 'Kick' : 'Twitch'}…`}
+                  rows={1}
+                  maxLength={500}
+                  style={{
+                    flex: 1, resize: 'none', background: '#0e0e14', border: `1px solid ${COLORS.border}`, borderRadius: 8,
+                    color: COLORS.text, fontSize: 13, padding: '7px 10px', outline: 'none', fontFamily: 'inherit', minHeight: 34, maxHeight: 90,
+                  }}
+                />
+                <button
+                  ref={emoteButtonRef} type="button" title="Emotes"
+                  onClick={() => setEmotePickerOpen((o) => !o)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32,
+                    borderRadius: 7, border: `1px solid ${COLORS.border}`, background: '#1b1b24',
+                    color: COLORS.textDim, cursor: 'pointer', flexShrink: 0,
+                  }}
+                >
+                  <Smile size={14} />
+                </button>
+                <Button variant="primary" onClick={handleSend} disabled={sending || !draftText.trim()}>
+                  <Send size={13} />{sending ? 'Sending…' : 'Send'}
+                </Button>
+                {emotePickerOpen && (
+                  <EmotePicker
+                    showKick={canKick} showTwitch={canTwitch}
+                    onPick={insertEmoteToken}
+                    onClose={() => setEmotePickerOpen(false)}
+                    triggerRef={emoteButtonRef}
+                  />
+                )}
+              </div>
+              {sendError && <div style={{ color: '#f87171', fontSize: 11.5, marginTop: 4 }}>{sendError}</div>}
+            </div>
+          )}
         </Section>
 
         <Section title={`Events (${events.length})`} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', marginBottom: 0, position: 'relative' }}>

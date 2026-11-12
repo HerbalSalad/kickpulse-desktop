@@ -60,6 +60,12 @@ function MyDevicesTab({ devices, onDevicesChange }: { devices: LightDeviceConfig
   const [elgatoScanProgress, setElgatoScanProgress] = useState<{ scanned: number; total: number } | null>(null);
   const [elgatoFound, setElgatoFound] = useState<ElgatoDiscoveryResult[]>([]);
 
+  const [magicHomeIp, setMagicHomeIp] = useState('');
+  const [magicHomeBusy, setMagicHomeBusy] = useState(false);
+  const [magicHomeError, setMagicHomeError] = useState<string | null>(null);
+  const [magicHomeScanning, setMagicHomeScanning] = useState(false);
+  const [magicHomeFound, setMagicHomeFound] = useState<MagicHomeDiscoveryResult[]>([]);
+
   const [goveeScanning, setGoveeScanning] = useState(false);
   const [goveeFound, setGoveeFound] = useState<GoveeDiscoveryResult[]>([]);
   const [goveeError, setGoveeError] = useState<string | null>(null);
@@ -141,6 +147,30 @@ function MyDevicesTab({ devices, onDevicesChange }: { devices: LightDeviceConfig
     setElgatoBusy(false);
     if (!res.ok) { setElgatoError(res.error || 'Failed to add device'); return; }
     setElgatoFound((prev) => prev.filter((d) => d.ip !== ip)); await loadAll();
+  };
+
+  const addMagicHome = async () => {
+    if (!magicHomeIp.trim()) return;
+    setMagicHomeBusy(true); setMagicHomeError(null);
+    const res = await window.kickpulseDesktop.lightsAddMagicHome(magicHomeIp.trim());
+    setMagicHomeBusy(false);
+    if (!res.ok) { setMagicHomeError(res.error || 'Failed to add device'); return; }
+    setMagicHomeIp(''); await loadAll();
+  };
+
+  const scanForMagicHome = async () => {
+    setMagicHomeScanning(true); setMagicHomeError(null); setMagicHomeFound([]);
+    try { setMagicHomeFound(await window.kickpulseDesktop.lightsDiscoverMagicHome()); }
+    catch (err: any) { setMagicHomeError(err?.message || 'Scan failed'); }
+    finally { setMagicHomeScanning(false); }
+  };
+
+  const addDiscoveredMagicHome = async (ip: string, model: string) => {
+    setMagicHomeBusy(true); setMagicHomeError(null);
+    const res = await window.kickpulseDesktop.lightsAddMagicHome(ip, model);
+    setMagicHomeBusy(false);
+    if (!res.ok) { setMagicHomeError(res.error || 'Failed to add device'); return; }
+    setMagicHomeFound((prev) => prev.filter((d) => d.ip !== ip)); await loadAll();
   };
 
   const scanForGovee = async () => {
@@ -226,7 +256,11 @@ function MyDevicesTab({ devices, onDevicesChange }: { devices: LightDeviceConfig
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
                   <div style={{ fontSize: 11, color: COLORS.textDim }}>
-                    {d.provider === 'wled' ? `WLED · ${d.ip}` : d.provider === 'govee' ? `Govee · ${d.ip}` : 'Philips Hue'}
+                    {d.provider === 'wled' ? `WLED · ${d.ip}`
+                      : d.provider === 'govee' ? `Govee · ${d.ip}`
+                      : d.provider === 'elgato' ? `Elgato · ${d.ip}`
+                      : d.provider === 'magichome' ? `Magic Home/LuYa · ${d.ip}`
+                      : 'Philips Hue'}
                   </div>
                 </div>
                 {s?.reachable && (
@@ -337,6 +371,37 @@ function MyDevicesTab({ devices, onDevicesChange }: { devices: LightDeviceConfig
           </div>
         </Row>
         {goveeError && <div style={{ color: '#f87171', fontSize: 12, marginTop: 6 }}>{goveeError}</div>}
+      </Section>
+
+      <Section title="Add a Magic Home / LuYa Light" right={<Radar size={15} color={COLORS.textDim} />}>
+        <div style={{ fontSize: 12, color: COLORS.textDim, marginBottom: 10 }}>
+          The cheap WiFi RGB(W) strip/bulb controllers sold under the Magic Home, LuYa, and many other storefront names — same underlying hardware/protocol, no app pairing needed.
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <Button onClick={scanForMagicHome} disabled={magicHomeScanning}><Radar size={13} />{magicHomeScanning ? 'Scanning…' : 'Scan my network'}</Button>
+        </div>
+        {magicHomeFound.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            {magicHomeFound.map((d) => {
+              const already = devices.some((x) => x.provider === 'magichome' && x.ip === d.ip);
+              return (
+                <div key={d.ip} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px' }}>
+                  <span style={{ fontSize: 13 }}>{d.model || 'Magic Home light'} <span style={{ color: COLORS.textDim, fontSize: 11 }}>({d.ip})</span></span>
+                  <Button variant="primary" disabled={already || magicHomeBusy} onClick={() => addDiscoveredMagicHome(d.ip, d.model)}>{already ? 'Added' : 'Add'}</Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {!magicHomeScanning && magicHomeFound.length === 0 && (
+          <Row label="Or enter the local IP manually" hint="Found in your router's device list, or the Magic Home/LuYa app's device settings">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <TextInput value={magicHomeIp} onChange={setMagicHomeIp} placeholder="192.168.1.65" style={{ flex: 1 }} />
+              <Button variant="primary" onClick={addMagicHome} disabled={magicHomeBusy || !magicHomeIp.trim()}><Plus size={13} />{magicHomeBusy ? 'Checking…' : 'Add'}</Button>
+            </div>
+          </Row>
+        )}
+        {magicHomeError && <div style={{ color: '#f87171', fontSize: 12, marginTop: 6 }}>{magicHomeError}</div>}
       </Section>
 
       <Section title="Add a Philips Hue Bridge" right={<Link2 size={15} color={COLORS.textDim} />}>
