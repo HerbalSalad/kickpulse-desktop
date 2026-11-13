@@ -546,7 +546,8 @@ export default function DashboardPage() {
                     onChange={(e) => setDraftPlatform(e.target.value as 'kick' | 'twitch' | 'both')}
                     style={{
                       background: '#0e0e14', border: `1px solid ${COLORS.border}`, borderRadius: 8, color: COLORS.text,
-                      fontSize: 12, padding: '7px 6px', outline: 'none', flexShrink: 0, cursor: 'pointer',
+                      fontSize: 12, padding: '0 6px', outline: 'none', flexShrink: 0, cursor: 'pointer',
+                      height: 32, boxSizing: 'border-box',
                     }}
                   >
                     <option value="kick">Kick</option>
@@ -565,7 +566,16 @@ export default function DashboardPage() {
                     style={{
                       background: '#0e0e14', border: `1px solid ${COLORS.border}`, borderRadius: 8,
                       color: COLORS.text, fontSize: 13, padding: '7px 32px 7px 10px', outline: 'none',
-                      minHeight: 34, maxHeight: 90, overflowY: 'auto', wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+                      // Same 32px as the select/emote-button/Send below (direct
+                      // report: "I want everything to be the same size, so
+                      // make it shorter to match the buttons and other
+                      // elements") — boxSizing:'border-box' is what makes
+                      // minHeight actually mean "32px total," border included,
+                      // same as every sibling here; still grows past that for
+                      // a longer message via maxHeight/overflowY, just no
+                      // longer taller than everything else at rest.
+                      minHeight: 32, maxHeight: 90, boxSizing: 'border-box',
+                      overflowY: 'auto', wordBreak: 'break-word', whiteSpace: 'pre-wrap',
                     }}
                   />
                   {!draftText && (
@@ -580,12 +590,14 @@ export default function DashboardPage() {
                   style={{
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32,
                     borderRadius: 7, border: `1px solid ${COLORS.border}`, background: '#1b1b24',
-                    color: COLORS.textDim, cursor: 'pointer', flexShrink: 0,
+                    color: COLORS.textDim, cursor: 'pointer', flexShrink: 0, boxSizing: 'border-box',
                   }}
                 >
                   <Smile size={14} />
                 </button>
-                <Button variant="primary" onClick={handleSend} disabled={sending || !draftText.trim()}>
+                <Button variant="primary" onClick={handleSend} disabled={sending || !draftText.trim()}
+                  style={{ height: 32, boxSizing: 'border-box', padding: '0 14px' }}
+                >
                   <Send size={13} />{sending ? 'Sending…' : 'Send'}
                 </Button>
                 {emotePickerOpen && (
