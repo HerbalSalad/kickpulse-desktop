@@ -38,8 +38,15 @@ export default function App() {
   }, []);
 
   const select = (id: string) => {
+    // Clicking "Widgets" again while already inside a widget's editor must
+    // drop back to the full listing, not leave you stuck in the editor —
+    // reported directly ("click the widgets section again... without
+    // having to click something else first"). Clearing unconditionally on
+    // every click (not just id !== 'widgets') is what makes that work: the
+    // active section only actually changes away from 'widgets' when you
+    // pick a different nav item, at which point clearing it too is harmless.
     setActive(id);
-    if (id !== 'widgets') setEditingWidgetKey(null);
+    setEditingWidgetKey(null);
   };
 
   const me = status?.me;
