@@ -115,7 +115,7 @@ export default function VoiceCommandsPage() {
   const toggleEnabled = async (next: boolean) => {
     if (next) {
       try {
-        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const s = await navigator.mediaDevices.getUserMedia({ audio: { autoGainControl: false } });
         s.getTracks().forEach((t) => t.stop());
       } catch { /* the hidden listener window surfaces the real failure if denied */ }
       await refreshDevices();

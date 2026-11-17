@@ -44,8 +44,16 @@ export default function VoiceApp() {
 
     (async () => {
       try {
+        // autoGainControl defaults to true in Chromium, which on Windows
+        // doesn't just adjust gain internally — it drives the real OS-level
+        // mic volume slider down in real time while you talk (confirmed via
+        // a live Core Audio volume monitor: smooth decay matching exactly
+        // when this window's capture was active). Explicitly off.
         mediaStream = await navigator.mediaDevices.getUserMedia({
-          audio: deviceIdRef.current ? { deviceId: { exact: deviceIdRef.current } } : true,
+          audio: {
+            ...(deviceIdRef.current ? { deviceId: { exact: deviceIdRef.current } } : {}),
+            autoGainControl: false,
+          },
         });
         if (stopped) { mediaStream.getTracks().forEach(t => t.stop()); return; }
 
