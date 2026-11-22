@@ -700,7 +700,6 @@ export function disconnectBotIdentity(apiKey: string, platform: 'kick' | 'twitch
 // route the website's own ClipSettings.tsx calls, see routes/clipSettings.js.
 export interface ClipSettings {
   permission: 'everyone' | 'subscriber' | 'vip' | 'moderator' | 'broadcaster';
-  onRequestMessage: string;
   onSuccessMessage: string;
   onFailureMessage: string;
 }

@@ -619,13 +619,11 @@ declare global {
       clipSettings: {
         get: () => Promise<{
           permission: 'everyone' | 'subscriber' | 'vip' | 'moderator' | 'broadcaster';
-          onRequestMessage: string;
           onSuccessMessage: string;
           onFailureMessage: string;
         }>;
         set: (settings: {
           permission: 'everyone' | 'subscriber' | 'vip' | 'moderator' | 'broadcaster';
-          onRequestMessage: string;
           onSuccessMessage: string;
           onFailureMessage: string;
         }) => Promise<any>;

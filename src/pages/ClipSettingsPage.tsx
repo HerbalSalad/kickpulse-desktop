@@ -13,14 +13,12 @@ type Permission = 'everyone' | 'subscriber' | 'vip' | 'moderator' | 'broadcaster
 
 interface ClipSettingsData {
   permission: Permission;
-  onRequestMessage: string;
   onSuccessMessage: string;
   onFailureMessage: string;
 }
 
 const DEFAULTS: ClipSettingsData = {
   permission: 'moderator',
-  onRequestMessage: '🎬 Clip requested by {sender}! (needs KickPulse Desktop connected — give it a few seconds)',
   onSuccessMessage: '🎬 Clip created: {clipUrl}',
   onFailureMessage: '❌ Clip failed: {error}',
 };
@@ -98,12 +96,6 @@ export default function ClipSettingsPage() {
       </Section>
 
       <Section title="Bot Replies">
-        <MessageField
-          label="On Request"
-          hint="Sent immediately when someone runs !clip. {sender} = their username."
-          value={settings.onRequestMessage}
-          onChange={v => set('onRequestMessage', v)}
-        />
         <MessageField
           label="On Success"
           hint="Sent once this app actually finishes creating the clip (also used for the Create Kick Clip Pulse Engine action). {clipUrl} = the real clip link."
